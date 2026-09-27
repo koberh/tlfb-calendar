@@ -2,6 +2,21 @@
 
 An interviewer-facing Timeline Followback workspace built by Kobe Hanson. Record daily substance-use responses, annotate memorable events, review completeness, and export analysis-ready data.
 
+## Development status: offline desktop work
+
+The existing interface is still the version-1 browser prototype. The first Astra
+milestone adds a version-2 research session model, migration, a pinned MME reference,
+calculation engine and export functions. These modules are tested but are not yet
+connected to the calendar interface. No desktop installer has been built yet.
+
+- [Complete ordered plan](docs/IMPLEMENTATION_PLAN.md)
+- [Medication, missingness and export specification](docs/RESEARCH_SPEC.md)
+- [Current progress and next-model handoff](docs/PROGRESS.md)
+
+The next phase connects the interface, followed by a separately packaged offline
+Windows application. The existing Sites/Cloudflare development server is not the
+verified offline product. The hosted prototype is for synthetic demonstrations.
+
 ## Features
 
 - Configurable assessment date and 1–90-day recall window; assessment day excluded.
@@ -52,7 +67,7 @@ The recall interval is `[assessment_date - recall_days, assessment_date - 1]`, i
 - **Total quantity:** sum of answered quantities; blank for binary measures or when no responses exist.
 - **Mean quantity:** total / answered days, including confirmed zeros; blank when undefined or binary.
 
-Counts refer to each substance separately. A positive response for one substance is not treated as use of every substance. Values of different units are never summed together. No automatic medication-equivalence calculations, alcohol conversions, diagnostic scores, or abstinence imputation are performed. Units and substance definitions should follow the study's measurement protocol.
+Counts refer to each substance separately. A positive response for one substance is not treated as use of every substance. Values of different units are never summed together. The version-1 interface does not perform medication-equivalence calculations, alcohol conversions, diagnostic scores, or abstinence imputation. The new research calculation module is described in the specification above and is not yet wired into that interface. Units and substance definitions should follow the study's measurement protocol.
 
 ## Exports
 
@@ -74,13 +89,20 @@ The public demonstration uses synthetic data exclusively. This project is an ind
 
 - `app/page.tsx`: React interview interface.
 - `lib/tlfb.ts`: date arithmetic, validation, completion states, summaries, and CSV serialization.
-- `tests/tlfb.test.mjs`: deterministic tests for date boundaries, missingness, export semantics, and session import.
+- `lib/research-session.ts`: version-2 validation, appointment/medication records and legacy migration.
+- `lib/mme-reference.ts`: pinned source and calculation-policy snapshot.
+- `lib/mme.ts`: pure research calculations; no network or filesystem access.
+- `lib/research-exports.ts`: medication, daily MME, period, BUP and substance CSV outputs.
+- `tests/tlfb.test.mjs`, `tests/research.test.mjs`: deterministic synthetic tests for date boundaries, missingness, calculations, export semantics, and session import.
 - `app/globals.css`: responsive, keyboard-accessible styling.
 - Vite/vinext provides local development and a Cloudflare-compatible deployment build.
 
 ## Project scope
 
-Based on the calendar workflow used during interviewer-administered TLFB collection. Supporting medication calculators and unused sheets from the legacy workbook are outside this project's scope. The original Excel file is not redistributed.
+Based on the calendar workflow used during interviewer-administered TLFB collection.
+The desktop roadmap adds an independently implemented, source-versioned research
+MME calculation module. Other unused sheets and the original Excel workbook are
+not redistributed. REDCap remains a separate downstream workflow.
 
 ## License
 
