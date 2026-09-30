@@ -1,109 +1,168 @@
-﻿# TLFB Calendar
+# TLFB Calendar
 
-An interviewer-facing Timeline Followback workspace built by Kobe Hanson. Record daily substance-use responses, annotate memorable events, review completeness, and export analysis-ready data.
+An interviewer-facing Timeline Followback workspace by Kobe Hanson, with an offline
+Windows desktop edition. Record daily substance use, medication quantities and
+event notes; review completeness; export research data.
 
-## Development status: offline desktop work
+## Use the Windows app
 
-The existing interface is still the version-1 browser prototype. The first Astra
-milestone adds a version-2 research session model, migration, a pinned MME reference,
-calculation engine and export functions. These modules are tested but are not yet
-connected to the calendar interface. No desktop installer has been built yet.
+Install `TLFB-Calendar-0.1.4-Windows-x64-Setup.exe` from the local `release` folder.
+Open **TLFB Calendar** from its desktop or Start Menu icon. Python, Node.js, a
+terminal, an account, and internet access are not needed after installation.
+The installer is currently unsigned. Institution-managed computers may require IT
+approval; do not bypass your institution's installation policy.
 
-- [Complete ordered plan](docs/IMPLEMENTATION_PLAN.md)
-- [Medication, missingness and export specification](docs/RESEARCH_SPEC.md)
-- [Current progress and next-model handoff](docs/PROGRESS.md)
+- [Staff quick start](docs/STAFF_GUIDE.md)
+- [Offline design and verification](docs/OFFLINE_REVIEW.md)
+- [Research calculation specification](docs/RESEARCH_SPEC.md)
+- [Ordered project plan](docs/IMPLEMENTATION_PLAN.md)
+- [Current status and remaining release gates](docs/PROGRESS.md)
 
-The next phase connects the interface, followed by a separately packaged offline
-Windows application. The existing Sites/Cloudflare development server is not the
-verified offline product. The hosted prototype is for synthetic demonstrations.
+This is a testable research prototype, not yet an institution-approved production
+release. Use synthetic data until study methods, storage policy, and deployment
+have been reviewed. The older hosted prototype is separate from this desktop
+build; it has not been redeployed.
 
 ## Features
 
-- Configurable assessment date and 1–90-day recall window; assessment day excluded.
-- One to twelve substances, each with a unique name and explicit measurement type/unit.
-- Daily quantity or binary use/no-use responses, plus date-specific event notes.
-- Multi-date entry with confirmation before overwriting existing responses.
-- Distinct confirmed no use, reported use, unanswered, partial, and outside-window states.
-- Daily long-format CSV, per-substance summary CSV, and validated JSON session save/restore.
-- Fictional demonstration interview. No original workbook or participant data is included.
+- Assessment date, 1–90 recall days (assessment day excluded), assessor and visit name.
+- Baseline, 1-, 3-, and 6-month visits, plus custom appointment labels.
+- Up to 30 medication records and 12 other substances, with explicit units.
+- Oral tablet, capsule, liquid and direct-mg entry; documented fentanyl patch wear.
+- Daily strength overrides; unknown quantity/strength preserved for review.
+- Weekday/weekend/manual date selection, overwrite confirmation and event notes.
+- Distinct confirmed zero, reported use, partial, unanswered and outside-window days.
+- Total, maximum and daily-average MME; calendar-month summaries within the recall interval.
+- Buprenorphine quantities reported separately; injections, pumps and unsupported routes excluded from MME.
+- Native local JSON session save/open, combined daily/summary CSVs and six detailed CSV exports.
+- Live dose/MME previews, last-save time and filename, optional local autosave.
+- Undo the last applied day, bulk-entry/clearing or settings change.
+- Version-1 session import without guessing opioid identities or converting old free text.
 
-## Run locally
+## Data handling
 
-Requires Node.js 22.18+ (or Node.js 24+) and npm.
+The desktop app loads bundled files with Electron. It does not run a localhost
+server or include an AI client, automatic upload, telemetry, cloud database,
+automatic recovery file, or updater. Remote requests, navigation, popups and
+permissions are blocked. Interview state stays in memory until explicitly saved/exported or saved by
+local autosave after the researcher enables it and chooses a file. Native file dialogs select destinations. JSON/CSV files contain the
+entered data, including notes; they are not encrypted by the app. A chosen folder
+may itself be cloud-synced by Windows/OneDrive, so use approved storage.
+
+Save day updates the open interview. Save session writes the resumable file.
+Optional autosave writes applied changes after a short delay to the chosen file.
+Unapplied day/settings drafts are not autosaved. Autosave starts off for every
+new/opened interview; its chosen path is kept only in the main-process memory.
+Canceled or failed saves do not mark an interview saved. Individual CSV exports do not replace a
+session backup; Save export folder also includes a resumable JSON copy. Sudden shutdown can lose changes that have not been saved.
+
+REDCap remains a separate downstream workflow. There is no REDCap API or embedded
+REDCap instrument. The original workbook and participant data are not distributed.
+
+## Research definitions
+
+The fixed reference is the [CDC 2022 conversion table](https://www.cdc.gov/mmwr/volumes/71/rr/rr7103a1.htm#T1_down),
+stored with a separate application policy version. MME is research output, not a
+prescribing or opioid-rotation recommendation. See the specification for factors
+and exceptions.
+
+All-days averages, full-period totals and maxima require every included-opioid
+day to be calculable. Answered-day averages use only fully calculable days;
+reported use of unknown quantity is recorded but excluded from that denominator.
+Confirmed zero-use days count as zero. Incomplete periods show explicitly labeled
+observed values/subtotals. No included opioid means MME is not applicable.
+
+Calendar status includes every medication and substance, independently of MME
+eligibility. Monthly results use only recall dates within each calendar month.
+Values are not extrapolated to 30 days. Buprenorphine is never assigned an MME
+factor; oral methadone for pain or OUD uses 4.7; fentanyl requires confirmed 24-hour
+concurrent patch wear. Different units are never added together.
+
+Version 0.1.2 includes OUD methadone under research policy 2, accepts mg per injection
+(e.g., one reported 300 mg Sublocade administration), and records pump delivery.
+BUP remains outside MME; its reported dose in mg is included in summaries/exports.
+Older policy-1 sessions display an upgrade notice and keep their reported data.
+Save a new session copy and regenerate CSVs; previous versions cannot open policy 2.
+
+Version 0.1.3 adds calculation previews using the same engine as exports, a last-save
+indicator, optional local autosave and one-step undo. Calculation policy 2 and the
+session/CSV formats are unchanged. Undo history stays in memory and resets when
+an interview is opened/replaced; saving/exporting does not erase it.
+
+Version 0.1.4 adds an interview review with date links, optional medication detail,
+follow-up setup copying, date-range selection, a three-file export folder and a
+printable summary. The calendar keeps its existing styling; additional tables
+and individual exports are collapsed until needed. BUP and pump doses stay optional.
+Session version 2 and MME policy 2 are unchanged. Combined summary CSV schema 3
+adds per-medication contributions and a separately labeled OUD-methadone subtotal.
+
+## Export files
+
+**Save export folder** writes a new folder containing the session JSON, combined daily CSV
+and combined summary CSV. Names share the participant, visit and assessment date;
+repeated exports get distinct folders. **Print summary** opens the native print
+dialog with a compact report including notes. Printing does not save the session.
+
+For MME and other substances together, use **Summary & exports → Individual CSV files → Combined daily CSV**
+(one row per date) or **Combined summary CSV** (one row per interview with window/month
+MME statistics and each substance's use/missing/zero days and reported quantities).
+Both retain explicit missingness and separate buprenorphine from MME. Numbered
+medication/substance column groups follow interview setup order and include IDs,
+names and units; use those identifiers when combining files from different setups.
+
+The UI offers substance daily/summary, medication daily, MME daily/summary and
+buprenorphine CSVs. Each includes appointment metadata and explicit missingness;
+MME exports carry reference/policy identifiers. Medication rows preserve raw
+quantity, units, effective strength, overrides, patch hours, factors and reasons
+for exclusions/review. Formula-like CSV text is neutralized for spreadsheets.
+CSV values retain calculation precision; the screen rounds to two decimal places.
+JSON contains the versioned reference snapshot and reopens the whole interview.
+
+Settings preserve compatible responses on overlapping dates. Changing measurement
+definitions or removing populated dates/items requires confirmation before those
+responses are cleared. Use per-day strength overrides for dose changes.
+
+## Build or replicate from source
+
+Requires Node.js 22.18+ (tested with 24.18) and npm. Internet is needed to acquire
+development dependencies and packaging tools, not to run the installed app.
 
 ```sh
 npm ci
-npm run dev
+npm run desktop
 ```
 
-Open the localhost URL printed by the development server.
+On Windows PowerShell, use `npm.cmd` if `npm.ps1` is blocked by execution policy.
+If your npm install-script policy skipped Electron's binary installer, review and
+allow the Electron installation script before building.
 
 ```sh
 npm test
 npm run typecheck
-npm run build
+npm run lint
+npm run build:desktop
+npm run test:desktop
+npm run package:windows
 ```
 
-## Workflow
+The installer is written to `release/`. No publish step is run. Updates are manual:
+save sessions, close the app, install a reviewed new version, then reopen sessions.
+Regenerating the checked-in icon uses `python desktop/make-icon.py` and Pillow;
+ordinary builds do not require Python.
 
-1. Enter a participant code, assessor, assessment date, recall window, and substances.
-2. Select a day, enter responses and optional event notes, then select **Save day**.
-3. For repeated responses, enable **Select multiple days**, select dates, choose one substance and response, and apply.
-4. Review **Summary & exports**. Missing days remain visible and can be exported before completion.
-5. Download the JSON session before closing or refreshing. Open that file to resume later.
+The original `npm run dev` / `npm run build` remain the browser development path.
+The desktop uses `vite.desktop.config.ts`; it does not import Sites/Cloudflare,
+the hosted layout, authentication helpers, or server entry points. Packaging uses
+an explicit file allowlist. Only synthetic fixtures belong in this repository.
 
-Changes to the recall window, substance definitions, or units explicitly start a fresh interview after confirmation. Participant and assessor labels can be edited without clearing responses.
+## Code map
 
-## Measurement definitions
+- `app/`: calendar, setup, response controls and research summary.
+- `lib/research-session.ts`: validation and legacy migration.
+- `lib/mme.ts`, `lib/mme-reference.ts`: pure calculations and pinned factors.
+- `lib/research-exports.ts`: generic research CSVs.
+- `lib/workspace.ts`: editing, response preservation and completeness rules.
+- `desktop/`: static renderer, sandboxed shell, preload and file policy.
+- `tests/`: synthetic domain and running-desktop acceptance checks.
 
-The recall interval is `[assessment_date - recall_days, assessment_date - 1]`, inclusive. All date arithmetic uses UTC calendar dates to avoid daylight-saving offsets. The calendar begins Monday and shows disabled padding dates outside the interval.
-
-- **Unanswered:** no stored numeric response; exported value is blank.
-- **No use:** an explicit numeric zero.
-- **Use:** a positive quantity or binary `1`.
-- **Partial day:** at least one configured substance is answered and another remains unanswered.
-- **Complete day:** all configured substances are answered, irrespective of use.
-- **Use percentage:** use days / answered days × 100; undefined when none are answered.
-- **Total quantity:** sum of answered quantities; blank for binary measures or when no responses exist.
-- **Mean quantity:** total / answered days, including confirmed zeros; blank when undefined or binary.
-
-Counts refer to each substance separately. A positive response for one substance is not treated as use of every substance. Values of different units are never summed together. The version-1 interface does not perform medication-equivalence calculations, alcohol conversions, diagnostic scores, or abstinence imputation. The new research calculation module is described in the specification above and is not yet wired into that interface. Units and substance definitions should follow the study's measurement protocol.
-
-## Exports
-
-Daily CSV: one row for every expected participant/date/substance combination, including unanswered entries. Columns:
-
-`participant_id, assessor, assessment_date, recall_start, recall_end, date, substance_id, substance, measurement, unit, status, value, event_note`
-
-Summary CSV: one row per substance, with answered/missing/no-use/use counts and the denominator-explicit metrics above. Neither export contains out-of-window calendar padding dates. UTF-8 BOM supports Excel; fields are quoted, and spreadsheet formula-like text is prefixed with an apostrophe to prevent interpretation as executable formulas.
-
-JSON sessions preserve the input state. Import validates dates, quantities, IDs, the recall window, and response keys. CSV is an analysis output, not an import format.
-
-## Data handling
-
-Interview data exists in browser memory only. No interview upload endpoint, analytics, cookies, local storage, or database is used by the application. The hosting provider serves the application and may retain ordinary access logs; downloaded session and CSV files contain the entered information and should be handled accordingly. Refreshing or closing clears memory. A browser exit warning is requested for unsaved sessions, but browsers do not guarantee that warning.
-
-The public demonstration uses synthetic data exclusively. This project is an independent software implementation inspired by a calendar-entry workflow, not a reproduction or validation of a clinical instrument. It has not been validated for production clinical research use.
-
-## Architecture
-
-- `app/page.tsx`: React interview interface.
-- `lib/tlfb.ts`: date arithmetic, validation, completion states, summaries, and CSV serialization.
-- `lib/research-session.ts`: version-2 validation, appointment/medication records and legacy migration.
-- `lib/mme-reference.ts`: pinned source and calculation-policy snapshot.
-- `lib/mme.ts`: pure research calculations; no network or filesystem access.
-- `lib/research-exports.ts`: medication, daily MME, period, BUP and substance CSV outputs.
-- `tests/tlfb.test.mjs`, `tests/research.test.mjs`: deterministic synthetic tests for date boundaries, missingness, calculations, export semantics, and session import.
-- `app/globals.css`: responsive, keyboard-accessible styling.
-- Vite/vinext provides local development and a Cloudflare-compatible deployment build.
-
-## Project scope
-
-Based on the calendar workflow used during interviewer-administered TLFB collection.
-The desktop roadmap adds an independently implemented, source-versioned research
-MME calculation module. Other unused sheets and the original Excel workbook are
-not redistributed. REDCap remains a separate downstream workflow.
-
-## License
-
-MIT. See LICENSE.
+MIT license. See [LICENSE](LICENSE).

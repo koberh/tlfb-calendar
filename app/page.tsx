@@ -1,46 +1,273 @@
-﻿'use client';
-import {useEffect,useRef,useState} from 'react';
-import {dailyCsv,datesFor,dayState,demoInterview,keyFor,newInterview,parseAmount,parseInterview,shiftDate,summary,summaryCsv,validateSetup} from '../lib/tlfb';
-import type {Interview,Substance} from '../lib/tlfb';
-const fmt=(d:string)=>new Date(d+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'});
-const longFmt=(d:string)=>new Date(d+'T12:00:00Z').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'UTC'});
-function download(name:string,text:string,type:string){const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-export default function Home(){
- const [interview,setInterview]=useState<Interview|null>(null),[draft,setDraft]=useState<Interview>(newInterview),[setup,setSetup]=useState(true),[selected,setSelected]=useState<string[]>([]),[bulk,setBulk]=useState(false),[bulkSub,setBulkSub]=useState(''),[bulkValue,setBulkValue]=useState(''),[values,setValues]=useState<Record<string,string>>({}),[note,setNote]=useState(''),[message,setMessage]=useState(''),[error,setError]=useState(''),[dirty,setDirty]=useState(false),[editing,setEditing]=useState(false),[tab,setTab]=useState<'calendar'|'summary'>('calendar');
- const fileRef=useRef<HTMLInputElement>(null);
- useEffect(()=>{const frame=requestAnimationFrame(()=>{const d=new Date();const today=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;setDraft(x=>({...x,assessmentDate:today}));});return()=>cancelAnimationFrame(frame);},[]);
- useEffect(()=>{if(!dirty)return;const handler=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',handler);return()=>window.removeEventListener('beforeunload',handler);},[dirty]);
- const dates=interview?datesFor(interview.assessmentDate,interview.recallDays):[];
- const completed=interview?dates.filter(d=>['zero','use'].includes(dayState(interview,d))).length:0;
- const answered=interview?interview.substances.reduce((n,s)=>n+summary(interview,s).answered,0):0;
- const expected=dates.length*(interview?.substances.length??0);
- const active=selected.length===1?selected[0]:null;
- const cellDates=dates.length?(()=>{const offset=(new Date(dates[0]+'T00:00:00Z').getUTCDay()+6)%7;return Array.from({length:Math.ceil((offset+dates.length)/7)*7},(_,n)=>shiftDate(dates[0],n-offset));})():[];
- function notify(text:string){setMessage(text);setError('');}
- function replace(i:Interview){setEditing(false);setInterview(i);setSetup(false);setSelected([]);setBulk(false);setDirty(true);setValues({});setNote('');setBulkSub(i.substances[0].id);}
- function safeReplace(){return !interview||!dirty||window.confirm('Replace this interview? Download a session first if you want to keep it.');}
- function choose(d:string){if(!interview)return;if(editing&&!window.confirm('Discard unsaved day edits? Select Cancel, then Save day to keep them.'))return;setEditing(false);setError('');if(bulk){setSelected(old=>old.includes(d)?old.filter(x=>x!==d):[...old,d]);return;}setSelected([d]);setValues(Object.fromEntries(interview.substances.map(s=>[s.id,interview.responses[keyFor(d,s.id)]===undefined?'':String(interview.responses[keyFor(d,s.id)])])));setNote(interview.notes[d]??'');}
- function saveDay(){if(!interview||!active)return;try{const responses={...interview.responses};for(const s of interview.substances){const value=values[s.id]??'';if(value.trim()==='')delete responses[keyFor(active,s.id)];else responses[keyFor(active,s.id)]=parseAmount(value,s.kind);}setInterview({...interview,responses,notes:{...interview.notes,[active]:note}});setEditing(false);setDirty(true);notify(`Saved ${fmt(active)}.`);}catch(e){setError((e as Error).message);}}
- function applyBulk(clear=false){if(!interview||!selected.length)return;try{const substance=interview.substances.find(s=>s.id===bulkSub)!;const value=clear?undefined:parseAmount(bulkValue,substance.kind);if(selected.some(d=>interview.responses[keyFor(d,substance.id)]!==undefined)&&!window.confirm('Some selected days already have a response for this substance. Replace those responses?'))return;const responses={...interview.responses};selected.forEach(d=>{if(value===undefined)delete responses[keyFor(d,substance.id)];else responses[keyFor(d,substance.id)]=value;});setInterview({...interview,responses});setDirty(true);notify(`${clear?'Cleared':'Updated'} ${selected.length} days for ${substance.name}.`);}catch(e){setError((e as Error).message);}}
- function exportFile(kind:'daily'|'summary'|'session'){if(!interview)return;if(editing){setError('Save the day you are editing before downloading.');return;}const stem=`tlfb-${interview.participantId.replace(/[^a-zA-Z0-9_-]/g,'_')}-${interview.assessmentDate}`;download(`${stem}-${kind}.${kind==='session'?'json':'csv'}`,kind==='daily'?dailyCsv(interview):kind==='summary'?summaryCsv(interview):JSON.stringify(interview,null,2),kind==='session'?'application/json':'text/csv;charset=utf-8');if(kind==='session')setDirty(false);notify(kind==='session'?'Session downloaded. Keep this file to resume later.':'CSV exported. Unanswered responses remain blank.');}
- return <main>
- <header><div className="brand">tlfb<span>calendar</span><i> / </i><small>RESEARCH WORKSPACE</small></div><span className="session-badge">{interview?.participantId==='DEMO-001'?'SYNTHETIC DEMO':'SESSION ONLY · NO CLOUD STORAGE'}</span></header>
- <section className="intro"><div><p className="eyebrow">LISTEN. RECALL. RECORD.</p><h1>Every day tells<br/><em>part of the story.</em></h1><p className="intro-copy">A focused workspace for interviewer-administered Timeline Followback.<br/>Capture daily use, meaningful moments, and what’s still unanswered.</p></div><aside className="intro-aside"><span className="big-number">{interview?.recallDays??draft.recallDays}</span><span>days of perspective</span><p>Assessment day is excluded.<br/>Zero means confirmed no use.</p></aside></section>
- <div className="top-actions"><button className="primary" onClick={()=>{if(editing){setError('Save the day you are editing before changing settings.');return;}setDraft(interview?structuredClone(interview):draft);setSetup(true);setError('');}}>{interview?'Interview settings':'Set up interview'}</button><button onClick={()=>{if(safeReplace()){replace(demoInterview());notify('Synthetic demo loaded. All responses are fictional.');}}}>Explore a demo</button><button onClick={()=>fileRef.current?.click()}>Open saved session</button>{interview&&<button className="push-right" onClick={()=>exportFile('session')}>Download session {dirty?'•':''}</button>}<input hidden ref={fileRef} type="file" accept=".json,application/json" onChange={async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;try{if(file.size>2_000_000)throw new Error('Session file is too large (maximum 2 MB).');const i=parseInterview(await file.text());if(safeReplace()){replace(i);setDirty(false);notify('Saved session opened.');}}catch(err){setError((err as Error).message);}}}/></div>
- {error&&<p className="alert error" role="alert">{error}</p>}{message&&<p className="alert" role="status">{message}</p>}
- {setup&&<section className="panel setup"><div className="section-title"><div><p className="eyebrow">01 / INTERVIEW SETUP</p><h2>Start with the context.</h2></div>{interview&&<button onClick={()=>setSetup(false)}>Close settings</button>}</div><form onSubmit={e=>{e.preventDefault();try{validateSetup(draft);if(interview&&(Object.keys(interview.responses).length||Object.keys(interview.notes).length)&&JSON.stringify([interview.assessmentDate,interview.recallDays,interview.substances])!==JSON.stringify([draft.assessmentDate,draft.recallDays,draft.substances])){if(!window.confirm('Changing the window, substances, or units starts a fresh interview and clears current responses and notes. Continue?'))return;replace({...draft,responses:{},notes:{}});}else replace(draft);notify('Interview ready. Choose a date to record responses.');}catch(err){setError((err as Error).message);}}}>
- <div className="setup-grid"><label>Participant code<input required maxLength={80} value={draft.participantId} placeholder="e.g. P-001" onChange={e=>setDraft({...draft,participantId:e.target.value})}/></label><label>Assessor<input maxLength={80} value={draft.assessor} placeholder="Initials or code" onChange={e=>setDraft({...draft,assessor:e.target.value})}/></label><label>Assessment date<input required type="date" min="1900-01-01" max="2100-12-31" value={draft.assessmentDate} onChange={e=>setDraft({...draft,assessmentDate:e.target.value})}/></label><label>Recall window (days)<input required type="number" min={1} max={90} step={1} value={draft.recallDays||''} onChange={e=>setDraft({...draft,recallDays:Number(e.target.value)})}/></label></div>
- <div className="substance-header"><h3>What are you recording?</h3><p>Use the substance definitions and units specified by your study.</p></div>
- {draft.substances.map((s,index)=><div className="substance-row" key={s.id}><span className="index">{String(index+1).padStart(2,'0')}</span><label>Substance<input required maxLength={80} value={s.name} onChange={e=>setDraft({...draft,substances:draft.substances.map(x=>x.id===s.id?{...x,name:e.target.value}:x)})}/></label><label>Record as<select value={s.kind} onChange={e=>setDraft({...draft,substances:draft.substances.map(x=>x.id===s.id?{...x,kind:e.target.value as Substance['kind'],unit:e.target.value==='binary'?'use / no use':''}:x)})}><option value="quantity">Daily quantity</option><option value="binary">Use / no use</option></select></label><label>Unit<input required maxLength={80} value={s.unit} readOnly={s.kind==='binary'} placeholder="e.g. cigarettes, mg, standard drinks" onChange={e=>setDraft({...draft,substances:draft.substances.map(x=>x.id===s.id?{...x,unit:e.target.value}:x)})}/></label><button type="button" className="text-button" disabled={draft.substances.length===1} aria-label={`Remove ${s.name}`} onClick={()=>setDraft({...draft,substances:draft.substances.filter(x=>x.id!==s.id)})}>Remove</button></div>)}
- <div className="setup-footer"><button type="button" disabled={draft.substances.length>=12} onClick={()=>setDraft({...draft,substances:[...draft.substances,{id:crypto.randomUUID(),name:'',unit:'',kind:'quantity'}]})}>+ Add substance</button><span>Blank responses remain unanswered.</span><button className="primary" type="submit">{interview?'Apply settings':'Create interview'} →</button></div></form></section>}
- {interview&&<>
- <section className="metrics"><div><span>PARTICIPANT</span><strong>{interview.participantId}</strong><small>Assessed {fmt(interview.assessmentDate)}</small></div><div><span>RECALL WINDOW</span><strong>{fmt(dates[0])} – {fmt(dates.at(-1)!)}</strong><small>{interview.recallDays} days · {interview.substances.length} substances</small></div><div><span>COMPLETE DAYS</span><strong>{completed}<i> / {dates.length}</i></strong><small>All configured substances answered</small></div><div><span>RESPONSES RECORDED</span><strong>{answered}<i> / {expected}</i></strong><progress value={answered} max={expected}/></div></section>
- <div className="workspace-tabs"><div role="tablist" aria-label="Workspace view"><button role="tab" aria-selected={tab==='calendar'} onClick={()=>setTab('calendar')}>Calendar</button><button role="tab" aria-selected={tab==='summary'} onClick={()=>setTab('summary')}>Summary & exports</button></div><span>{dirty?'Session has unsaved changes':'Session file saved / opened'}</span></div>
- {tab==='calendar'?<div className="workspace"><section className="panel calendar-panel"><div className="section-title"><div><p className="eyebrow">02 / DAILY RECALL</p><h2>Your interview calendar</h2></div><button aria-pressed={bulk} onClick={()=>{if(editing&&!window.confirm('Discard unsaved day edits?'))return;setEditing(false);setBulk(!bulk);setSelected([]);setError('');}}>{bulk?'Exit multi-select':'Select multiple days'}</button></div><div className="legend"><span><b className="dot zero"/>No use</span><span><b className="dot use"/>Use reported</span><span><b className="dot partial"/>Partial</span><span><b className="dot unanswered"/>Unanswered</span><span><b className="dot outside"/>Outside window</span></div><div className="calendar"><div className="weekday">Mon</div><div className="weekday">Tue</div><div className="weekday">Wed</div><div className="weekday">Thu</div><div className="weekday">Fri</div><div className="weekday">Sat</div><div className="weekday">Sun</div>{cellDates.map(d=>{const state=dayState(interview,d);const count=interview.substances.filter(s=>interview.responses[keyFor(d,s.id)]!==undefined).length;return <button key={d} disabled={state==='outside'} aria-pressed={selected.includes(d)} aria-label={`${longFmt(d)}: ${state}, ${count} of ${interview.substances.length} responses`} className={`day ${state} ${selected.includes(d)?'selected':''}`} onClick={()=>choose(d)}><span className="day-top"><strong>{Number(d.slice(-2))}</strong><small>{new Date(d+'T12:00:00Z').toLocaleDateString('en-US',{month:'short',timeZone:'UTC'})}</small></span><span className="day-state">{state==='outside'?'Outside window':state==='zero'?'No use':state==='use'?'Use reported':state==='partial'?'Partial':'Unanswered'}</span>{state!=='outside'&&<span className="day-count">{count}/{interview.substances.length}{interview.notes[d]?' · Note':''}</span>}</button>;})}</div><p className="hint">A day is complete only when every configured substance has a response. Event notes do not count as responses.</p></section>
- <aside className="panel editor">{bulk?<><p className="eyebrow">REPEATED RESPONSES</p><h2>{selected.length} days selected</h2><p>Choose dates on the calendar, then apply one substance response to those days.</p><div className="inline-actions"><button onClick={()=>setSelected(dates)}>Select all dates</button><button onClick={()=>setSelected([])}>Clear selection</button></div><label>Substance<select value={bulkSub} onChange={e=>{setBulkSub(e.target.value);setBulkValue('');}}>{interview.substances.map(s=><option value={s.id} key={s.id}>{s.name} · {s.unit}</option>)}</select></label><label>Response{interview.substances.find(s=>s.id===bulkSub)?.kind==='binary'?<select value={bulkValue} onChange={e=>setBulkValue(e.target.value)}><option value="">Choose response</option><option value="0">0 · No use</option><option value="1">1 · Use</option></select>:<input type="number" min="0" step="any" value={bulkValue} onChange={e=>setBulkValue(e.target.value)}/>}</label><button className="primary full" disabled={!selected.length} onClick={()=>applyBulk()}>Apply to selected days</button><button className="full" disabled={!selected.length} onClick={()=>applyBulk(true)}>Clear selected responses</button><p className="hint">Clearing restores unanswered status. Other substances and notes are preserved.</p></>:active?<><p className="eyebrow">DAY DETAIL</p><h2>{fmt(active)}</h2><p>{longFmt(active)}</p><form onSubmit={e=>{e.preventDefault();saveDay();}}>{interview.substances.map(s=><label key={s.id}>{s.name}<small>{s.unit}</small>{s.kind==='binary'?<select value={values[s.id]??''} onChange={e=>{setValues({...values,[s.id]:e.target.value});setEditing(true);setDirty(true);}}><option value="">Unanswered</option><option value="0">0 · No use</option><option value="1">1 · Use</option></select>:<input type="number" min="0" step="any" placeholder="Unanswered" value={values[s.id]??''} onChange={e=>{setValues({...values,[s.id]:e.target.value});setEditing(true);setDirty(true);}}/>}</label>)}<label>Memorable event / notes<textarea rows={3} maxLength={2000} value={note} onChange={e=>{setNote(e.target.value);setEditing(true);setDirty(true);}} placeholder="Birthday, shift change, travel…"/></label><button className="primary full" type="submit">Save day</button><button className="full" type="button" onClick={()=>{setValues(Object.fromEntries(interview.substances.map(s=>[s.id,'0'])));setEditing(true);setDirty(true);}}>Set all to no use</button><p className="hint">Save day commits your edits. Leave an input blank to clear that response.</p></form></>:<><p className="eyebrow">A MOMENT TO REMEMBER</p><div className="empty-symbol">＋</div><h2>Start with a day.</h2><p>Select a date to record daily responses and contextual notes.</p><div className="tip"><strong>A useful distinction</strong><p><b>0</b> means the participant confirmed no use.<br/><b>Blank</b> means the response is still unanswered.</p></div><p className="hint">Use multi-select for a repeated response across several days.</p></>}</aside></div>:<section className="panel summary"><div className="section-title"><div><p className="eyebrow">03 / RESEARCH EXPORT</p><h2>A transparent summary.</h2></div><div className="inline-actions"><button onClick={()=>exportFile('summary')}>Summary CSV</button><button className="primary" onClick={()=>exportFile('daily')}>Daily data CSV ↓</button></div></div><p>Use percentages and quantity averages are calculated across answered days only. Missing days are never counted as no use.</p><div className="table-scroll"><table><thead><tr><th>Substance / unit</th><th>Answered</th><th>Missing</th><th>No use</th><th>Use days</th><th>Use / answered</th><th>Total quantity</th><th>Mean / answered day</th></tr></thead><tbody>{interview.substances.map(s=>{const q=summary(interview,s);return <tr key={s.id}><th>{s.name}<small>{s.unit}</small></th><td>{q.answered}</td><td className={q.missing?'missing':''}>{q.missing}</td><td>{q.zeroDays}</td><td>{q.useDays}</td><td>{q.percentUse===null?'—':q.percentUse.toFixed(1)+'%'}</td><td>{s.kind==='quantity'&&q.answered?q.total.toLocaleString(undefined,{maximumFractionDigits:3}):'—'}</td><td>{q.mean===null?'—':q.mean.toLocaleString(undefined,{maximumFractionDigits:3})}</td></tr>;})}</tbody></table></div><div className="export-notes"><div><h3>One row. One day. One substance.</h3><p>The daily CSV includes all {expected} expected responses, including unanswered entries, their status, units, and event notes. Dates outside the recall window are excluded.</p></div><div><h3>Keep the context.</h3><p>Download a session file to resume later. CSV exports are analysis outputs; use the JSON session file to reopen your interview.</p><button onClick={()=>exportFile('session')}>Download session</button></div></div></section>}
- </>}
- <footer><span>TLFB CALENDAR <b> / </b> Built for thoughtful research.</span><span>Session data stays in memory. Download a session before closing or refreshing.</span></footer>
- </main>;
+'use client';
+import {useEffect, useMemo, useRef, useState} from 'react';
+import './sol.css';
+import {datesFor, keyFor, parseAmount, shiftDate} from '../lib/tlfb';
+import {calculateMme} from '../lib/mme';
+import {createResearchSession, readResearchSession, writeResearchSession} from '../lib/research-session';
+import type {ResearchSession} from '../lib/research-session';
+import {blankResponse, calendarStatus, commitResponse, responseDraft, revisedSetup, selectionDates, syntheticDemo, reasonLabel} from '../lib/workspace';
+import type {ResponseDraft} from '../lib/workspace';
+import {confirmAction, saveLocal} from '../lib/local-files';
+import {MedicationEntry, SetupFields} from './research-controls';
+import {ResearchSummary, show} from './research-summary';
+import {InterviewReview} from './interview-review';
+import {PrintSummary} from './print-summary';
+import {followupDraft, rangeDates, sessionStem} from '../lib/interview-tools';
+import {combinedDailyCsv, combinedSummaryCsv} from '../lib/research-exports';
+
+const fmt = (d: string) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', {month: 'short', day: 'numeric', timeZone: 'UTC'});
+const longFmt = (d: string) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', {weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC'});
+const localToday = () => {const d = new Date(); return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');};
+const labels: Record<string, string> = {outside: 'Outside window', unanswered: 'Unanswered', partial: 'Partial', use: 'Use reported', zero: 'No use'};
+
+export default function Home() {
+  const [session, setSession] = useState<ResearchSession | null>(null);
+  const [draft, setDraft] = useState(() => createResearchSession('2026-09-27'));
+  const [setup, setSetup] = useState(true), [setupDirty, setSetupDirty] = useState(false);
+  const [tab, setTab] = useState<'calendar' | 'review' | 'summary'>('calendar');
+  const [rangeStart, setRangeStart] = useState(''), [rangeEnd, setRangeEnd] = useState('');
+  const [followingUp, setFollowingUp] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]), [bulk, setBulk] = useState(false);
+  const [bulkId, setBulkId] = useState(''), [bulkResponse, setBulkResponse] = useState(blankResponse), [bulkQuantity, setBulkQuantity] = useState('');
+  const [medDrafts, setMedDrafts] = useState<Record<string, ResponseDraft>>({}), [quantities, setQuantities] = useState<Record<string, string>>({}), [note, setNote] = useState('');
+  const [editing, setEditing] = useState(false), [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(''), [error, setError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+  const sessionRef = useRef<ResearchSession | null>(null), checkpoint = useRef<string | null>(null), ioBusy = useRef(false);
+  const [desktop, setDesktop] = useState(false);
+  const [undoPoint, setUndoPoint] = useState<{session: ResearchSession; label: string} | null>(null);
+  const [savedFile, setSavedFile] = useState<{name: string; at?: string; opened?: boolean; downloaded?: boolean} | null>(null);
+  const [autoTarget, setAutoTarget] = useState<{token: string; name: string} | null>(null);
+  const [autoSavedText, setAutoSavedText] = useState<string | null>(null), [autoError, setAutoError] = useState('');
+  const sessionText = useMemo(() => session ? writeResearchSession(session) : null, [session]);
+  useEffect(() => {const id = requestAnimationFrame(() => {setDraft(x => ({...x, assessmentDate: localToday()})); setDesktop(!!window.tlfbDesktop);}); return () => cancelAnimationFrame(id);}, []);
+  useEffect(() => {
+    const unsaved = dirty || editing || setupDirty;
+    window.tlfbDesktop?.setDirty(unsaved);
+    if (!unsaved || window.tlfbDesktop) return;
+    const h = (e: BeforeUnloadEvent) => {e.preventDefault(); e.returnValue = '';};
+    window.addEventListener('beforeunload', h); return () => window.removeEventListener('beforeunload', h);
+  }, [dirty, editing, setupDirty]);
+  useEffect(() => {
+    if (!autoTarget || !sessionText || sessionText === autoSavedText || autoError || busy || editing || setupDirty) return;
+    const timer = setTimeout(async () => {
+      if (ioBusy.current || !window.tlfbDesktop) return;
+      ioBusy.current = true; setBusy(true);
+      try {
+        const result = await window.tlfbDesktop.autosave({token: autoTarget.token, text: sessionText});
+        if (!result.ok) throw new Error(result.error || 'Autosave did not complete.');
+        setAutoSavedText(sessionText);
+        checkpoint.current = sessionText;
+        setSavedFile({name: result.name || autoTarget.name, at: result.savedAt});
+        if (sessionRef.current && writeResearchSession(sessionRef.current) === sessionText) setDirty(false);
+      } catch (error) {setAutoError(error instanceof Error ? error.message : 'Autosave paused. Save session manually.');}
+      finally {ioBusy.current = false; setBusy(false);}
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [autoTarget, autoSavedText, sessionText, autoError, busy, editing, setupDirty]);
+  const mme = useMemo(() => session ? calculateMme(session) : null, [session]);
+  const dates = session ? datesFor(session.assessmentDate, session.recallDays) : [];
+  const active = !bulk && selected.length === 1 ? selected[0] : null;
+  const items = session ? [...session.medications, ...session.substances] : [];
+  const expected = dates.length * items.length;
+  const answered = session ? dates.reduce((n, d) => n + calendarStatus(session, d).answered, 0) : 0;
+  const cells = dates.length ? (() => {const offset = (new Date(dates[0] + 'T00:00:00Z').getUTCDay() + 6) % 7; return Array.from({length: Math.ceil((offset + dates.length) / 7) * 7}, (_, i) => shiftDate(dates[0], i - offset));})() : [];
+  const bulkMed = session?.medications.find(m => m.id === bulkId);
+  const bulkSub = session?.substances.find(s => s.id === bulkId);
+  function notify(text: string) {setMessage(text); setError('');}
+  function fail(e: unknown) {setMessage(''); setError(e instanceof Error ? e.message : 'Unable to complete this action.');}
+  function ready() {if (editing || setupDirty) {fail(new Error('Save or discard your day / settings edits first.')); return false;} return true;}
+  function displaySession(s: ResearchSession) {
+    setRangeStart(''); setRangeEnd(''); setFollowingUp(false);
+    calculateMme(s); sessionRef.current = s; setSession(s); setDraft(structuredClone(s)); setSetup(false); setSetupDirty(false); setEditing(false); setSelected([]); setBulk(false); setTab('calendar');
+    setBulkId(s.medications[0]?.id ?? s.substances[0]?.id ?? ''); setBulkResponse(blankResponse()); setBulkQuantity('');
+  }
+  function install(s: ResearchSession, saved = false, name = '') {
+    displaySession(s); setDirty(!saved); checkpoint.current = saved ? writeResearchSession(s) : null;
+    setUndoPoint(null); setSavedFile(name ? {name, opened: true} : null);
+  }
+  function applyChange(next: ResearchSession, label: string) {
+    calculateMme(next);
+    const text = writeResearchSession(next);
+    if (session && text !== writeResearchSession(session)) setUndoPoint({session: structuredClone(session), label});
+    sessionRef.current = next; setSession(next); setDirty(text !== checkpoint.current);
+  }
+  function undoChange() {
+    if (!undoPoint || busy || !ready()) return;
+    const previous = structuredClone(undoPoint.session), label = undoPoint.label;
+    displaySession(previous); setUndoPoint(null); setDirty(writeResearchSession(previous) !== checkpoint.current);
+    if (active && datesFor(previous.assessmentDate, previous.recallDays).includes(active)) loadDay(active, previous);
+    notify(`Undid ${label}. Save session to keep this version, or let enabled autosave finish.`);
+  }
+  async function stopAutosave() {
+    if (window.tlfbDesktop) {
+      const result = await window.tlfbDesktop.stopAutosave();
+      if (!result.ok) {fail(new Error(result.error)); return false;}
+    }
+    setAutoTarget(null); setAutoSavedText(null); setAutoError(''); return true;
+  }
+  async function mayReplace() {
+    if ((dirty || editing || setupDirty) && !await confirmAction('Replace the current interview and discard unsaved changes? Save a session file first to keep them.')) return false;
+    return stopAutosave();
+  }
+  async function openText(text: string, name = 'session.json') {const loaded = readResearchSession(text); calculateMme(loaded.session); if (await mayReplace()) {install(loaded.session, loaded.notices.length === 0, name); notify(['Session opened.', ...loaded.notices].join(' '));}}
+  async function toggleAutosave() {
+    if (!session || ioBusy.current || !ready() || !window.tlfbDesktop) return;
+    if (autoTarget) {if (await stopAutosave()) notify('Autosave is off. The saved file is kept.'); return;}
+    ioBusy.current = true; setBusy(true);
+    try {
+      const text = writeResearchSession(session);
+      const name = `tlfb-${session.participantId}-${session.appointment.code}-${session.assessmentDate}-autosave.json`.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const result = await window.tlfbDesktop.selectAutosave({kind: 'session', name, text});
+      if (result.error) throw new Error(result.error);
+      if (result.ok && result.token && result.name) {
+        setAutoTarget({token: result.token, name: result.name}); setAutoSavedText(text); setAutoError('');
+        checkpoint.current = text; setDirty(false); setSavedFile({name: result.name, at: result.savedAt});
+        notify('Autosave enabled for this interview. Save day or Apply settings to include your edits.');
+      }
+    } catch (error) {fail(error);} finally {ioBusy.current = false; setBusy(false);}
+  }
+  async function openSession() {
+    if (busy) return;
+    if (!window.tlfbDesktop) {fileRef.current?.click(); return;}
+    setBusy(true);
+    try {const result = await window.tlfbDesktop.open(); if (result.error) throw new Error(result.error); if (result.ok && result.text) await openText(result.text, result.name);} catch (e) {fail(e);} finally {setBusy(false);}
+  }
+  async function saveSession() {
+    if (!session || ioBusy.current || busy || !ready()) return; ioBusy.current = true; setBusy(true);
+    try {
+      const name = `tlfb-${session.participantId}-${session.appointment.code}-${session.assessmentDate}.json`;
+      const text = writeResearchSession(session), result = await saveLocal('session', name, text);
+      if (result.ok) {
+        setSavedFile({name: result.name || name, at: result.savedAt, downloaded: result.downloaded});
+        if (!result.downloaded) {checkpoint.current = text; setDirty(false);}
+        notify(result.downloaded ? 'Session download requested. Check your downloads.' : 'Session saved to your chosen file.');
+      }
+    } catch (e) {fail(e);} finally {ioBusy.current = false; setBusy(false);}
+  }
+  async function exportCsv(label: string, data: string) {
+    if (!session || busy || !ready()) return; setBusy(true);
+    try {if ((await saveLocal('csv', `tlfb-${session.participantId}-${session.appointment.code}-${session.assessmentDate}-${label}.csv`, data)).ok) notify('CSV saved. Save a session file to reopen this interview later.');} catch (e) {fail(e);} finally {setBusy(false);}
+  }
+  async function exportBundle() {
+    if (!session || busy || !ready() || !window.tlfbDesktop) return;
+    ioBusy.current = true; setBusy(true);
+    try {
+      const name = sessionStem(session), text = writeResearchSession(session);
+      const result = await window.tlfbDesktop.bundle({name, files:[{kind:'session',name:name+'.json',text},
+        {kind:'csv',name:name+'-combined-daily.csv',text:combinedDailyCsv(session)},
+        {kind:'csv',name:name+'-combined-summary.csv',text:combinedSummaryCsv(session)}]});
+      if (result.error) throw new Error(result.error);
+      if (result.ok) {
+        checkpoint.current = text; setDirty(false); setSavedFile({name:`${result.name} / ${name}.json`,at:result.savedAt});
+        notify(`Export folder saved: ${result.name}. It contains your session and both combined CSVs.`);
+      }
+    } catch (e) {fail(e);} finally {ioBusy.current = false; setBusy(false);}
+  }
+  async function printSummary() {
+    if (!session || busy || !ready()) return;
+    setBusy(true);
+    try {
+      if (window.tlfbDesktop) {const result = await window.tlfbDesktop.print(); if (result.error) throw new Error(result.error);}
+      else window.print();
+    } catch (e) {fail(e);} finally {setBusy(false);}
+  }
+  async function startFollowup() {
+    if (!session || busy || !ready()) return;
+    const next = followupDraft(session, localToday());
+    if (!await mayReplace()) return;
+    setSession(null); sessionRef.current = null; checkpoint.current = null; setUndoPoint(null); setSavedFile(null);
+    setDraft(next); setSetup(true); setFollowingUp(true); setSetupDirty(true); setDirty(false); setEditing(false); setSelected([]);
+    notify('Setup copied for a follow-up. Check the date, visit and medications, then create the interview.');
+  }
+  function loadDay(date: string, source = session) {
+    if (!source) return;
+    setSelected([date]); setMedDrafts(Object.fromEntries(source.medications.map(m => [m.id, responseDraft(source.medicationResponses[keyFor(date, m.id)])])));
+    setQuantities(Object.fromEntries(source.substances.map(s => [s.id, source.responses[keyFor(date, s.id)]?.toString() ?? ''])));
+    setNote(source.notes[date] ?? ''); setEditing(false); setError('');
+  }
+  function choose(date: string) {if (!ready()) return; if (bulk) setSelected(x => x.includes(date) ? x.filter(d => d !== date) : [...x, date]); else loadDay(date);}
+  function commitDay() {
+    if (!session || !active) return;
+    try {
+      const next = structuredClone(session);
+      for (const m of next.medications) {const k = keyFor(active, m.id), r = commitResponse(m, medDrafts[m.id] ?? blankResponse()); if (r) next.medicationResponses[k] = r; else delete next.medicationResponses[k];}
+      for (const s of next.substances) {const k = keyFor(active, s.id), raw = quantities[s.id] ?? ''; if (raw.trim()) next.responses[k] = parseAmount(raw, s.kind); else delete next.responses[k];}
+      if (note) next.notes[active] = note; else delete next.notes[active];
+      applyChange(next, `day edit on ${fmt(active)}`); setEditing(false); notify(`Saved ${fmt(active)} in this session. Use Save session to keep a file.`);
+    } catch (e) {fail(e);}
+  }
+  async function applyBulk(clear = false) {
+    if (!session || !selected.length || busy) return;
+    try {
+      const next = structuredClone(session);
+      const r = bulkMed && !clear ? commitResponse(bulkMed, bulkResponse) : undefined;
+      const q = bulkSub && !clear ? parseAmount(bulkQuantity, bulkSub.kind) : undefined;
+      const overwrites = selected.some(d => bulkMed ? session.medicationResponses[keyFor(d, bulkId)] !== undefined : session.responses[keyFor(d, bulkId)] !== undefined);
+      setBusy(true);
+      if (overwrites && !await confirmAction('Replace the existing responses for this item on the selected days? Other items and notes are preserved.')) return;
+      for (const d of selected) {const k = keyFor(d, bulkId); if (bulkMed) {if (r) next.medicationResponses[k] = r; else delete next.medicationResponses[k];} else if (q !== undefined) next.responses[k] = q; else delete next.responses[k];}
+      applyChange(next, `${clear ? 'clearing' : 'bulk entry for'} ${selected.length} days`); notify(`${clear ? 'Cleared' : 'Updated'} ${selected.length} days for ${bulkMed?.name ?? bulkSub?.name}.`);
+    } catch (e) {fail(e);} finally {setBusy(false);}
+  }
+  async function applySetup() {
+    try {
+      const revised = revisedSetup(session, draft); setBusy(true);
+      if (revised.removed && !await confirmAction(`These settings will clear ${revised.removed} recorded responses or notes because their dates or measurement definitions changed. Continue? Cancel to save the current session first.`)) return;
+      if (session) {applyChange(revised.session, 'interview settings'); displaySession(revised.session);} else install(revised.session);
+      notify('Interview ready. Select a date to record responses.');
+    } catch (e) {fail(e);} finally {setBusy(false);}
+  }
+  return <main>
+    <header><div className="brand">tlfb<span>calendar</span><i> / </i><small>RESEARCH WORKSPACE</small></div><span className="session-badge">LOCAL FILES · RESEARCH USE</span></header>
+    <div className="top-actions sol-top">
+      <button disabled={busy} className="primary" onClick={() => {if (ready()) {setDraft(structuredClone(session ?? draft)); setSetup(true);}}}>{session ? 'Interview settings' : 'Set up interview'}</button>
+      <button disabled={busy} onClick={openSession}>Open session</button>
+      <button disabled={busy} onClick={async () => {if (await mayReplace()) {setSession(null); sessionRef.current = null; checkpoint.current = null; setUndoPoint(null); setSavedFile(null); setDraft(createResearchSession(localToday())); setFollowingUp(false); setSetup(true); setSetupDirty(false); setEditing(false); setDirty(false); setSelected([]); notify('New interview.');}}}>New interview</button>
+      <details className="more-options"><summary>More options</summary><div>{session && <button disabled={busy} onClick={startFollowup}>Start follow-up</button>}<button disabled={busy} onClick={async () => {if (await mayReplace()) {install(syntheticDemo()); notify('Synthetic demo loaded: 5 mg oxycodone, one tablet on weekdays and two on weekends.');}}}>Try synthetic demo</button></div></details>
+      {session && <button disabled={busy} className="push-right" onClick={saveSession}>Save session{dirty ? ' •' : ''}</button>}
+      <input hidden ref={fileRef} type="file" accept=".json" onChange={async e => {const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; setBusy(true); try {if (file.size > 2_000_000) throw new Error('Session exceeds the 2 MB limit.'); await openText(await file.text(), file.name);} catch (err) {fail(err);} finally {setBusy(false);}}}/>
+    </div>
+    {session && <section className="save-panel" aria-label="Session saving">
+      <div><strong data-testid="save-status">{busy ? 'Working with a file...' : editing || setupDirty ? 'Edits not applied yet' : dirty ? 'Changes not saved to a file' : 'Current interview saved'}</strong>
+        <p data-testid="last-saved">{savedFile?.at ? `Last saved at ${new Date(savedFile.at).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit', second: '2-digit'})} to ${savedFile.name}` : savedFile?.opened ? `Opened ${savedFile.name}. No new save yet.` : savedFile?.downloaded ? `Download requested: ${savedFile.name}. Confirm it is in your downloads.` : 'No session file saved yet.'}</p>
+        <p>Save day applies entries to this interview. Save session writes a file you can reopen.</p>
+      </div>
+      <div className="save-options">{desktop && <><button disabled={busy || editing || setupDirty} onClick={toggleAutosave}>{autoTarget ? 'Turn off autosave' : 'Enable local autosave'}</button><small className={autoError ? 'save-error' : ''} data-testid="autosave-status">{autoError ? autoError : autoTarget ? `Autosave on: ${autoTarget.name}. Applied changes save automatically.` : 'Autosave off. Choose a file to enable it for this interview.'}</small></>}
+        <button disabled={busy || editing || setupDirty || !undoPoint} onClick={undoChange}>Undo last change</button><small>{undoPoint ? `Undo: ${undoPoint.label}` : 'Undo is available after a day, bulk, or settings change.'}</small>
+      </div>
+    </section>}
+    {error && <p role="alert" className="alert error">{error}</p>}{message && <p role="status" className="alert">{message}</p>}
+    {setup && <section className="panel setup"><div className="section-title"><div><p className="eyebrow">01 / INTERVIEW SETUP</p><h2>Assessment details</h2></div>{session && <button disabled={busy} onClick={async () => {if (!setupDirty || await confirmAction('Discard unapplied settings?')) {setSetup(false); setSetupDirty(false);}}}>Discard / close settings</button>}</div>
+      {followingUp && <p className="alert">New follow-up for {draft.participantId}. Check the assessment date, appointment and current medications. All daily responses and notes start blank.</p>}<form onSubmit={e => {e.preventDefault(); void applySetup();}}><fieldset disabled={busy} className="plain-fieldset"><SetupFields draft={draft} onChange={s => {setDraft(s); setSetupDirty(true);}}/><div className="setup-footer"><span>Assessment day is excluded. Blank responses stay unanswered.</span><button className="primary" type="submit">{session ? 'Apply settings' : 'Create interview'}</button></div></fieldset></form>
+    </section>}
+    {session && !setup && <>
+      <section className="metrics"><div><span>PARTICIPANT / VISIT</span><strong>{session.participantId}</strong><small>{session.appointment.label || 'Appointment unspecified'}</small></div><div><span>RECALL WINDOW</span><strong>{fmt(dates[0])} – {fmt(dates.at(-1)!)}</strong><small>{session.recallDays} days · assessment day excluded</small></div><div><span>RESPONSES</span><strong>{answered}<i> / {expected}</i></strong><small>All medications and substances</small></div><div><span>MME STATUS</span><strong>{mme!.window.status.replace('_', ' ')}</strong><small>{mme!.window.calculableDays} of {dates.length} days calculable</small></div></section>
+      <div className="workspace-tabs"><div><button aria-pressed={tab === 'calendar'} onClick={() => {if (ready()) setTab('calendar');}}>Calendar</button><button aria-pressed={tab === 'review'} onClick={() => {if (ready()) setTab('review');}}>Review interview</button><button aria-pressed={tab === 'summary'} onClick={() => {if (ready()) setTab('summary');}}>Summary & exports</button></div><span>{editing ? 'Day edits not yet saved' : dirty ? 'Session has unsaved changes' : 'Applied changes saved'}</span></div>
+      {tab === 'review' ? <InterviewReview session={session} result={mme!} onDay={d => {if (ready()) {setTab('calendar'); setBulk(false); loadDay(d); requestAnimationFrame(() => document.querySelector('.editor')?.scrollIntoView({block:'start',behavior:'smooth'}));}}}/> : tab === 'summary' ? <ResearchSummary session={session} result={mme!} onExport={exportCsv} onBundle={desktop ? exportBundle : undefined} onPrint={printSummary} busy={busy}/> : <div className="workspace"><section className="panel calendar-panel"><div className="section-title"><div><p className="eyebrow">02 / DAILY RECALL</p><h2>Interview calendar</h2></div><button aria-pressed={bulk} onClick={() => {if (ready()) {setBulk(!bulk); setSelected([]);}}}>{bulk ? 'Exit multi-select' : 'Select multiple days'}</button></div>
+        <div className="legend">{['zero','use','partial','unanswered','outside'].map(s => <span key={s}><b className={`dot ${s}`}/>{labels[s]}</span>)}</div>
+        <div className="calendar">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => <div className="weekday" key={d}>{d}</div>)}{cells.map(d => {
+          const state = calendarStatus(session, d), day = mme!.daily.find(x => x.date === d);
+          return <button key={d} data-date={d} aria-label={`${longFmt(d)}: ${labels[state.state]}, ${state.answered} of ${items.length} responses`} aria-pressed={selected.includes(d)} disabled={state.state === 'outside' || busy} className={`day ${state.state} ${selected.includes(d) ? 'selected' : ''}`} onClick={() => choose(d)}><span className="day-top"><strong>{Number(d.slice(-2))}</strong><small>{fmt(d).split(' ')[0]}</small></span><span className="day-state">{labels[state.state]}</span>{day && <><span className="day-count">{state.answered}/{items.length}{session.notes[d] ? ' · Note' : ''}</span><span className="day-count">{day.status === 'not_applicable' ? 'MME N/A' : day.status === 'incomplete' ? 'MME incomplete' : `MME ${show(day.mme)}`}</span></>}</button>;
+        })}</div><p className="hint">Calendar status covers every configured medication and substance. MME completeness covers included opioids only.</p>
+      </section><aside className="panel editor"><fieldset className="plain-fieldset" disabled={busy}>
+        {bulk ? <><p className="eyebrow">REPEATED RESPONSES</p><h2>{selected.length} days selected</h2><div className="inline-actions">{(['weekdays','weekends','all'] as const).map(k => <button key={k} onClick={() => setSelected(selectionDates(session, k))}>{k[0].toUpperCase() + k.slice(1)}</button>)}<button onClick={() => setSelected([])}>Clear selection</button></div>
+          <details className="range-picker"><summary>Select a date range</summary><div className="range-fields"><label>From date<input type="date" min={dates[0]} max={dates.at(-1)} value={rangeStart} onChange={e => setRangeStart(e.target.value)}/></label><label>Through date<input type="date" min={dates[0]} max={dates.at(-1)} value={rangeEnd} onChange={e => setRangeEnd(e.target.value)}/></label></div><button disabled={!rangeDates(session,rangeStart,rangeEnd).length} onClick={() => setSelected(rangeDates(session,rangeStart,rangeEnd))}>Select this range</button>{rangeStart && rangeEnd && !rangeDates(session,rangeStart,rangeEnd).length && <p className="hint">Choose an ordered range inside this recall window.</p>}</details>
+          <label>Medication or substance<select value={bulkId} onChange={e => {setBulkId(e.target.value); setBulkResponse(blankResponse()); setBulkQuantity('');}}>{items.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+          {bulkMed ? <MedicationEntry medication={bulkMed} value={bulkResponse} onChange={setBulkResponse} applyLabel="Apply to selected days"/> : <label>Daily response ({bulkSub?.unit}){bulkSub?.kind === 'binary' ? <select value={bulkQuantity} onChange={e => setBulkQuantity(e.target.value)}><option value="">Choose response</option><option value="0">Confirmed no use</option><option value="1">Use reported</option></select> : <input type="number" min="0" step="any" value={bulkQuantity} onChange={e => setBulkQuantity(e.target.value)} placeholder="0 = confirmed no use"/>}</label>}
+          {selected.length > 0 && <details className="selection-preview" open><summary>Check {selected.length} selected days</summary><p>{[...selected].sort().map(fmt).join(', ')}</p><small>{selected.filter(d => bulkMed ? session.medicationResponses[keyFor(d,bulkId)] !== undefined : session.responses[keyFor(d,bulkId)] !== undefined).length} existing responses for {bulkMed?.name ?? bulkSub?.name} will be replaced. Other entries and notes stay as they are.</small></details>}
+          <button className="primary full" disabled={!selected.length || (bulkMed ? bulkResponse.status === 'unanswered' : !bulkQuantity.trim())} onClick={() => applyBulk()}>Apply to selected days</button><button className="full" disabled={!selected.length} onClick={() => applyBulk(true)}>Clear selected responses</button><p className="hint">For oxycodone configured as 5 mg/tablet: report use of 1 tablet on weekdays, then 2 on weekends. Clear restores unanswered status.</p>
+        </> : active ? <><p className="eyebrow">DAY DETAIL</p><h2>{fmt(active)}</h2><p>{longFmt(active)}</p>
+          {session.medications.map(m => <MedicationEntry key={m.id} medication={m} value={medDrafts[m.id] ?? blankResponse()} onChange={r => {setMedDrafts({...medDrafts, [m.id]: r}); setEditing(true);}}/>)}
+          {session.substances.map(s => <label key={s.id}>{s.name}<small>{s.unit}</small>{s.kind === 'binary' ? <select value={quantities[s.id] ?? ''} onChange={e => {setQuantities({...quantities, [s.id]: e.target.value}); setEditing(true);}}><option value="">Unanswered</option><option value="0">Confirmed no use</option><option value="1">Use reported</option></select> : <input type="number" min="0" step="any" value={quantities[s.id] ?? ''} placeholder="Unanswered" onChange={e => {setQuantities({...quantities, [s.id]: e.target.value}); setEditing(true);}}/>}</label>)}
+          <label>Memorable event / notes<textarea rows={3} maxLength={2000} value={note} onChange={e => {setNote(e.target.value); setEditing(true);}}/></label>
+          <button className="primary full" onClick={commitDay}>Save day</button><button className="full" onClick={() => {setMedDrafts(Object.fromEntries(session.medications.map(m => [m.id, {...blankResponse(), status: 'no_use'}]))); setQuantities(Object.fromEntries(session.substances.map(s => [s.id, '0']))); setEditing(true);}}>Set all to no use</button>
+          {editing && <button className="full" onClick={async () => {if (await confirmAction('Discard unsaved day edits?')) loadDay(active);}}>Discard day edits</button>}
+          {!editing && mme!.medicationRows.filter(r => r.date === active && r.status === 'needs_review').map(r => <p className="hint" key={r.medicationId}>{session.medications.find(m => m.id === r.medicationId)?.name}: {reasonLabel(r.reason)}</p>)}
+        </> : <><p className="eyebrow">DAY DETAIL</p><h2>Choose a date</h2><p>Select a calendar day to record responses, or select multiple days for a repeated response.</p><p className="hint">Zero means confirmed no use. Blank means unanswered.</p></>}
+      </fieldset></aside></div>}
+    </>}
+    {session && <PrintSummary session={session} result={mme!}/>}
+    <footer><span>Use Save day to apply edits, then Save session or enabled local autosave to keep them. Choose your institution-approved storage location.</span><span>Offline desktop edition: no automatic upload or AI connection. Research calculations only.</span></footer>
+  </main>;
 }
-
-

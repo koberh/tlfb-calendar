@@ -1,5 +1,19 @@
 # TLFB Calendar: offline desktop roadmap
 
+Latest update (2026-09-30): version 0.1.4 adds review navigation, medication summaries,
+follow-up setup, date-range entry, export folders and printing with a simple calendar-first UI.
+Version 0.1.3 added live calculation previews, explicit
+save status, optional local autosave and one-step undo. Version 0.1.2 introduced
+OUD methadone under research policy 2 and optional injection/pump dose recording. See PROGRESS.md for
+packaging, installation and validation status.
+
+## Interface preference
+
+Keep the presentation simple and friendly. Preserve the calendar's existing
+colors, typography and spacing. Keep secondary tools and detailed tables behind
+plain-language buttons or expandable sections; avoid crowding the daily workflow.
+This is an ongoing design constraint from the researcher (2026-09-30).
+
 ## Agreed outcome
 
 A researcher installs a Windows application once and opens the familiar TLFB
@@ -13,6 +27,12 @@ prototype is not the planned desktop deliverable. The original workbook is not
 redistributed. Research calculations do not provide prescribing advice.
 
 ## Work sequence and handoff
+
+Status on 2026-09-27: steps 1–4 are implemented; installer, packaged executable and
+installed-copy checks have passed on the development computer. The staff guide and
+source instructions from step 5 are present. Clean-machine validation, signing,
+institutional review and any GitHub publication remain outstanding. PROGRESS.md
+records the exact evidence and avoids treating these outstanding gates as complete.
 
 1. **Astra: specification and foundation.** Review the existing code, settle the
    medication model, reference policy, completeness rules, appointment field,
@@ -70,7 +90,8 @@ Node integration stays disabled and context isolation/sandboxing enabled.
 
 Bundle scripts, fonts and images locally. Block remote navigation, remote resource
 requests, popups and arbitrary IPC. No auto-updater, crash-report upload, telemetry,
-automatic recovery file, or browser storage for interviews. Use synthetic data
+automatic recovery file, or browser storage for interviews. Version 0.1.3 adds opt-in autosave to a
+user-selected local session file; no hidden recovery file is created. Use synthetic data
 to test CSP/network blocking, file I/O, unsaved-close prompts and installer behavior.
 Installer signing and clean-machine validation are release tasks, not completed
 claims. Local files remain PHI-bearing files; institutional storage policy still

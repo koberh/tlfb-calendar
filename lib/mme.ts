@@ -1,6 +1,6 @@
 import { datesFor, keyFor } from './tlfb.ts';
 import { MME_REFERENCE } from './mme-reference.ts';
-import { validateResearchSession } from './research-session.ts';
+import { validateMedication, validateMedicationResponse, validateResearchSession } from './research-session.ts';
 import type { Medication, MedicationResponse, ResearchSession } from './research-session.ts';
 
 export type Eligibility = {
@@ -17,7 +17,7 @@ export type MedicationResult = Eligibility & {
   strengthOverridden: boolean;
   patchHours: number | null;
   doseBasis: number | null;
-  doseBasisUnit: 'mg/day' | 'mcg/hr' | null;
+  doseBasisUnit: 'mg/day' | 'mg' | 'mcg/hr' | null;
   status: 'calculated' | 'no_use' | 'unanswered' | 'needs_review' | 'excluded' | 'buprenorphine';
   mme: number | null;
 };
@@ -108,10 +108,20 @@ function calculateMedication(m: Medication, response: MedicationResponse | undef
     status: eligibility.scope === 'included' ? 'unanswered' : eligibility.scope,
     mme: null,
   };
-  if (eligibility.scope !== 'included' || !response) return result;
+  if (!response) return result;
+  if (eligibility.scope !== 'included') {
+    // Preserve a reported dose for separate BUP/excluded-route reporting, without MME.
+    const unitCompatible = m.quantityUnit === 'mg' ||
+      (m.strengthUnit === 'mg/unit' && ['tablets', 'capsules', 'units'].includes(m.quantityUnit)) ||
+      (m.strengthUnit === 'mg/mL' && m.quantityUnit === 'mL');
+    const doseBasis = !unitCompatible ? null : response.status === 'no_use' ? 0 :
+      response.quantity === null ? null : m.quantityUnit === 'mg' ? response.quantity :
+      effectiveStrength === null ? null : product(response.quantity, effectiveStrength);
+    return { ...result, doseBasis, doseBasisUnit: unitCompatible ? (m.route === 'injection' ? 'mg' : 'mg/day') : null };
+  }
   if (response.status === 'no_use') return { ...result, status: 'no_use', mme: 0 };
   const review = (reason: string): MedicationResult => ({ ...result, status: 'needs_review', reason });
-  if (m.genericName === 'methadone' && m.indication !== 'pain') return review('methadone_indication_requires_review');
+  if (m.genericName === 'methadone' && !['pain', 'oud'].includes(m.indication)) return review('methadone_indication_requires_review');
   if (response.quantity === null) return review('quantity_unknown');
   let basis: number;
   let unit: 'mg/day' | 'mcg/hr';
@@ -130,6 +140,13 @@ function calculateMedication(m: Medication, response: MedicationResponse | undef
     unit = 'mg/day';
   }
   return { ...result, status: 'calculated', doseBasis: basis, doseBasisUnit: unit, mme: product(basis, eligibility.factor!) };
+}
+
+/** The editor preview uses the same validated calculation as saved research results. */
+export function previewMedication(m: Medication, response: MedicationResponse | undefined): MedicationResult {
+  validateMedication(m);
+  if (response) validateMedicationResponse(response, m);
+  return calculateMedication(m, response, 'preview');
 }
 
 function calculateDay(date: string, rows: MedicationResult[]): DailyMme {
@@ -190,9 +207,13 @@ function summarizeSeparate(m: Medication, rows: MedicationResult[]) {
   const knownQuantities = answered.flatMap(r => r.quantity === null ? [] : [r.quantity]);
   const unknownQuantityDays = answered.filter(r => r.responseStatus === 'use' && r.quantity === null).length;
   const total = unknownQuantityDays ? null : sum(knownQuantities);
+  const unknownDoseDays = answered.filter(r => r.responseStatus === 'use' && r.doseBasis === null).length;
+  const doses = answered.flatMap(r => r.doseBasis === null ? [] : [r.doseBasis]);
   return {
     medicationId: m.id,
     name: m.name,
+    route: m.route,
+    doseRecording: m.route === 'injection' ? 'administered_on_recorded_dates' : m.route === 'pump' ? 'delivered_on_recorded_dates' : 'taken_on_recorded_dates',
     quantityUnit: m.quantityUnit,
     answeredDays: answered.length,
     missingDays: responses.length - answered.length,
@@ -201,6 +222,8 @@ function summarizeSeparate(m: Medication, rows: MedicationResult[]) {
     unknownQuantityDays,
     totalReportedQuantity: total,
     meanQuantityPerAnsweredDay: total !== null && answered.length ? total / answered.length : null,
+    unknownDoseDays,
+    totalReportedDoseMg: unknownDoseDays ? null : sum(doses),
   };
 }
 
@@ -217,7 +240,7 @@ export function calculateMme(session: ResearchSession) {
   const months = [...new Set(dates.map(date => date.slice(0, 7)))].map(month =>
     summarizeDays(daily.filter(day => day.date.startsWith(month)), month));
   return {
-    scope: 'Included opioids under tlfb-mme-policy-1; excludes buprenorphine and unsupported medications/routes.',
+    scope: `Included opioids under ${session.reference.policyId}; includes oral methadone for pain or OUD at 4.7 MME/mg for research; excludes buprenorphine and unsupported medications/routes.`,
     referenceId: session.reference.id,
     policyId: session.reference.policyId,
     medicationRows,

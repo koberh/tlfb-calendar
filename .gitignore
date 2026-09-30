@@ -43,5 +43,8 @@ yarn-error.log*
 # Interview data belongs outside source control
 sessions/
 exports/
+/release/
+/desktop-dist/
+/test-results/
 *.xlsm
 *.xlsx

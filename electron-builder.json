@@ -1,0 +1,11 @@
+{
+  "appId": "org.tlfbcalendar.desktop",
+  "productName": "TLFB Calendar",
+  "asar": true,
+  "directories": {"output": "release"},
+  "files": ["desktop/main.cjs", "desktop/preload.cjs", "desktop/policy.cjs", "desktop/autosave.cjs", "desktop/bundle.cjs", "desktop/icon.ico", "desktop-dist/**/*", "package.json", "LICENSE", "!node_modules/**/*"],
+  "win": {"target": [{"target": "nsis", "arch": ["x64"]}], "icon": "desktop/icon.ico", "signExecutable": false},
+  "nsis": {"oneClick": false, "perMachine": false, "allowElevation": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true, "runAfterFinish": false},
+  "artifactName": "TLFB-Calendar-${version}-Windows-${arch}-Setup.${ext}",
+  "publish": null
+}

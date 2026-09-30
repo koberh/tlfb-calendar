@@ -22,6 +22,7 @@ const eslintConfig = defineConfig([
   reactHooks.configs.flat["recommended-latest"],
   jsxA11y.flatConfigs.recommended,
   next.configs["core-web-vitals"],
+  {files: ["desktop/**/*.cjs"], rules: {"@typescript-eslint/no-require-imports": "off"}},
   {
     languageOptions: {
       globals: {

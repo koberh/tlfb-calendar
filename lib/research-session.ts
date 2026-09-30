@@ -1,6 +1,6 @@
 import { datesFor, keyFor, newInterview, parseInterview } from './tlfb.ts';
 import type { Interview, Substance } from './tlfb.ts';
-import { assertReference, referenceSnapshot } from './mme-reference.ts';
+import { assertReference, isLegacyReference, referenceSnapshot } from './mme-reference.ts';
 import type { ReferenceSnapshot } from './mme-reference.ts';
 
 export const APPOINTMENTS = ['baseline', 'month_1', 'month_3', 'month_6', 'custom', 'unspecified'] as const;
@@ -210,6 +210,14 @@ export function readResearchSession(text: string): { session: ResearchSession; n
     return {
       session: migrateInterview(parseInterview(text)),
       notices: ['Imported version 1. Appointment is unspecified. No medication identities, strengths, or MME were inferred; map legacy opioid entries explicitly.'],
+    };
+  }
+  if (isLegacyReference(parsed.reference)) {
+    const upgraded = { ...parsed, reference: referenceSnapshot() };
+    validateResearchSession(upgraded);
+    return {
+      session: upgraded,
+      notices: ['Updated the research calculation policy: oral methadone recorded for OUD now contributes to MME using 4.7 × mg/day, as for pain. Reported data and indications are unchanged; totals may change. Save a new session copy and regenerate CSVs to keep the updated results. The original file has not been changed.'],
     };
   }
   validateResearchSession(parsed);

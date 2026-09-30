@@ -1,6 +1,6 @@
 # Research data and calculation specification
 
-Implementation policy: `tlfb-mme-policy-1`. Session format: version 2.
+Implementation policy: `tlfb-mme-policy-2` (2026-09-30). Session format: version 2.
 These rules are implementation decisions unless explicitly attributed below.
 
 ## Reference and scope
@@ -24,10 +24,13 @@ Application choices beyond the reference table:
 
 - Oral tablets, capsules, liquid, and explicitly reported oral mg are supported
   for the nine listed oral drugs. Only the opioid ingredient strength is used.
-- Methadone with an explicitly recorded pain indication uses the pinned factor.
-  OUD, other, or unknown indication requires review and returns no MME. This is a
-  conservative software boundary, not a claim that research can never study OUD
-  methadone exposure. A future study policy would require a new policy version.
+- Oral methadone with a pain or OUD indication uses the same pinned 4.7 factor.
+  Including OUD methadone is the requested research convention, not a CDC clinical
+  recommendation for OUD dosing. Other or unknown indications still require review.
+  Preserve the recorded indication and actual reported dose, including liquid
+  concentration, amount consumed and date-specific strength changes. Do not assume
+  the prescribed amount was taken. This changes application policy 1, which withheld
+  MME for OUD; the reference table and conversion factors themselves are unchanged.
 - Fentanyl support is limited to patches with documented whole-day use. Record
   the number of patches concurrently worn, not patches newly applied that day.
   Reported hours must equal 24. Partial-day/uncertain wear is retained and flagged
@@ -36,6 +39,15 @@ Application choices beyond the reference table:
   drugs absent from the reference (including levorphanol and dihydrocodeine) are
   retained but excluded with a reason. No guessed factors or brand-name inference.
 - Buprenorphine is separate regardless of formulation; it never enters MME.
+
+## Importing earlier policies
+
+Exact, unaltered policy-1 reference snapshots are recognized on file import and
+upgraded to policy 2 after validating the session. The UI discloses recalculation,
+keeps the reported data and indication, and marks the session unsaved. The original
+file is untouched. Save a new copy and regenerate exports; earlier app versions
+will not accept the new policy. Altered factors, unknown policies and malformed
+records remain rejected. Version-1 interviews use the current policy on migration.
 
 ## Version-2 record
 
@@ -125,7 +137,35 @@ units or formulations). Show answered/missing/use/no-use counts and an observed
 quantity total/mean only when all recorded positive responses have known quantity.
 No `with BUP MME` output is created.
 
+Injection setup supports mg per injection plus the reported number administered
+on each date, or direct mg on the administration date. A 300 mg monthly injection
+reported once contributes 300 mg once; no daily exposure or 30-day allocation is
+inferred. A no-use response for an injection means no administration on that date,
+not absence of medication effect. Pump quantities mean actual delivery on that
+date, in direct mg or reported mL with known mg/mL; reservoir/refill loads are not
+substituted for delivered dose. Unknown delivery remains unknown.
+
+Separate dose reporting preserves mg for BUP and excluded drugs where units and
+strength permit: `dose_basis` in medication/combined daily exports, with `mg` for
+injections or `mg/day` for other delivery. This never assigns MME. BUP summaries
+add route, dose-recording basis, unknown-dose days and total reported dose in mg.
+The observed mg total is blank if any reported administration/use has an unknown
+dose; unanswered days remain explicitly counted. No inference is made for missing
+days. Counts of injection days are administration days, not duration of effect.
+
 ## Exports and future UI contract
+
+- Combined daily CSV (`tlfb-combined-daily-1`): one row per recall date, strict
+  daily MME/subtotal and completeness plus each medication's raw/effective dose
+  fields, eligibility and MME, each substance's value/status/units, and event note.
+  No repeated daily MME across substance rows. BUP/excluded medication MME stays blank.
+- Combined summary CSV (`tlfb-combined-summary-2`): one row per interview; full-window
+  MME metrics, separate column groups for each intersecting calendar month, substance
+  counts/quantities, and separate BUP quantities. Denominators follow existing rules.
+- Wide combined exports use numbered column groups in setup order with explicit
+  identifiers/names/units. Names need not be valid CSV identifiers; same medication
+  display names do not collide. Align groups by included identifiers across files,
+  not solely by column position. Unavailable numeric values remain blank.
 
 - Existing general substance exports remain available.
 - Medication CSV: one row per recall date and medication, including unanswered,

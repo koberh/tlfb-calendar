@@ -4,7 +4,7 @@ import { datesFor, keyFor, demoInterview } from '../lib/tlfb.ts';
 import { MME_REFERENCE } from '../lib/mme-reference.ts';
 import { migrateInterview, readResearchSession, writeResearchSession, validateResearchSession } from '../lib/research-session.ts';
 import { calculateMme } from '../lib/mme.ts';
-import { medicationCsv, dailyMmeCsv, mmeSummaryCsv, buprenorphineCsv, researchSubstanceCsv, researchSubstanceSummaryCsv } from '../lib/research-exports.ts';
+import { combinedDailyCsv, combinedSummaryCsv, medicationCsv, dailyMmeCsv, mmeSummaryCsv, buprenorphineCsv, researchSubstanceCsv, researchSubstanceSummaryCsv } from '../lib/research-exports.ts';
 import { session, medication, noUse, use } from './research-fixtures.mjs';
 
 function fill(s, response = noUse()) {
@@ -38,6 +38,78 @@ function parseCsv(text) {
   assert.ok(data.every(r => r.length === head.length));
   return data.map(r => Object.fromEntries(head.map((h, n) => [h, r[n]])));
 }
+
+test('combined daily CSV aligns substances and medications by date and preserves missing/zero statuses', () => {
+  const s = session({recallDays:3, substances:[{id:'alcohol',name:'Alcohol',kind:'quantity',unit:'drinks'}, {id:'cannabis',name:'Cannabis',kind:'binary',unit:'use / no use'}]});
+  set(s,0,noUse()); set(s,1,use(2));
+  const ds = datesFor(s.assessmentDate,s.recallDays);
+  s.responses[keyFor(ds[0],'alcohol')] = 0; s.responses[keyFor(ds[0],'cannabis')] = 1;
+  s.responses[keyFor(ds[1],'alcohol')] = 2;
+  const rows = parseCsv(combinedDailyCsv(s));
+  assert.equal(rows.length,3); assert.deepEqual(rows.map(r=>r.date),ds);
+  assert.deepEqual(rows.map(r=>r.daily_mme),['0','15','']);
+  assert.deepEqual(rows.map(r=>r.substance_1_value),['0','2','']);
+  assert.deepEqual(rows.map(r=>r.substance_1_response_status),['no_use','use','unanswered']);
+  assert.equal(rows[1].substance_2_value,''); assert.equal(rows[0].substance_2_value,'1');
+  assert.equal(rows[0].appointment_label,'Baseline'); assert.equal(rows[0].substance_1_unit,'drinks');
+  assert.equal(rows[1].medication_1_reported_quantity,'2'); assert.equal(rows[1].medication_1_mme,'15');
+  assert.equal(rows[0].reference_id,MME_REFERENCE.id);
+});
+
+test('combined CSV keeps unknown quantities, BUP and excluded routes separate from MME', () => {
+  const s = session({recallDays:1,medications:[medication(),medication({id:'bup',genericName:'buprenorphine'}),medication({id:'pump',route:'pump'})]});
+  set(s,0,use(null)); set(s,0,use(2),'bup'); set(s,0,use(3),'pump');
+  const [r] = parseCsv(combinedDailyCsv(s));
+  assert.equal(r.daily_mme,''); assert.equal(r.mme_status,'incomplete');
+  assert.equal(r.medication_1_reported_quantity,''); assert.equal(r.medication_1_reason,'quantity_unknown');
+  assert.equal(r.medication_2_reported_quantity,'2'); assert.equal(r.medication_2_scope,'buprenorphine');
+  assert.equal(r.medication_2_mme,''); assert.equal(r.medication_3_scope,'excluded'); assert.equal(r.medication_3_mme,'');
+});
+
+test('combined CSV quotes notes and duplicate display names without column collisions', () => {
+  const s = session({recallDays:1,medications:[medication({name:'=unsafe'}),medication({id:'other',name:'=unsafe',strength:10})]});
+  set(s,0,use(1,{strengthOverride:7.5})); set(s,0,use(2),'other');
+  s.notes['2026-09-27'] = 'Fictional note, with "quotes"\nand a second line';
+  const [r] = parseCsv(combinedDailyCsv(s));
+  assert.equal(r.event_note,s.notes['2026-09-27']);
+  assert.equal(r.medication_1_name,"'=unsafe"); assert.equal(r.medication_2_name,"'=unsafe");
+  assert.equal(r.medication_1_id,'oxy-5'); assert.equal(r.medication_2_id,'other');
+  assert.equal(r.medication_1_effective_strength,'7.5'); assert.equal(r.medication_2_effective_strength,'10');
+  assert.equal(r.daily_mme,'41.25');
+});
+
+test('combined summary joins full-window and monthly MME with substance counts without duplicating interview rows', () => {
+  const s = session({assessmentDate:'2026-10-03',recallDays:3,substances:[{id:'alcohol',name:'Alcohol',unit:'drinks',kind:'quantity'}]});
+  set(s,0,use(1)); set(s,1,noUse()); set(s,2,use(2));
+  s.responses['2026-09-30|alcohol']=2; s.responses['2026-10-01|alcohol']=0;
+  const rows=parseCsv(combinedSummaryCsv(s)); assert.equal(rows.length,1);
+  const [r]=rows;
+  assert.equal(r.mme_full_period_total_mme,'22.5'); assert.equal(r.mme_average_all_days_mme_per_day,'7.5');
+  assert.equal(r.mme_full_period_maximum_daily_mme,'15');
+  assert.equal(r.month_1_period,'2026-09'); assert.equal(r.month_1_days_in_scope,'1'); assert.equal(r.month_1_full_period_total_mme,'7.5');
+  assert.equal(r.month_2_period,'2026-10'); assert.equal(r.month_2_days_in_scope,'2'); assert.equal(r.month_2_full_period_total_mme,'15');
+  assert.equal(r.substance_1_use_days,'1'); assert.equal(r.substance_1_no_use_days,'1'); assert.equal(r.substance_1_missing_days,'1');
+  assert.equal(r.substance_1_total_reported_quantity,'2'); assert.equal(r.substance_1_mean_per_answered_day,'1');
+});
+
+test('combined summary preserves incomplete denominators and BUP quantities', () => {
+  const s=session({recallDays:2,medications:[medication(),medication({id:'bup',genericName:'buprenorphine'})]});
+  set(s,0,use(1)); set(s,0,use(2),'bup');
+  const [r]=parseCsv(combinedSummaryCsv(s));
+  assert.equal(r.mme_full_period_total_mme,''); assert.equal(r.mme_average_all_days_mme_per_day,'');
+  assert.equal(r.mme_average_answered_days_mme_per_day,'7.5'); assert.equal(r.mme_calculable_days,'1');
+  assert.equal(r.buprenorphine_1_total_reported_quantity,'2'); assert.equal(r.buprenorphine_1_missing_days,'1');
+  assert.equal(r.buprenorphine_1_mme_status,'excluded_buprenorphine');
+});
+
+test('combined exports support substance-only assessments and retain CSV protections', () => {
+  const s=session({recallDays:1,medications:[],substances:[{id:'other',name:'=FORMULA()',kind:'binary',unit:'use / no use'}]});
+  s.responses['2026-09-27|other']=1;
+  const [daily]=parseCsv(combinedDailyCsv(s)),[combined]=parseCsv(combinedSummaryCsv(s));
+  assert.equal(daily.daily_mme,''); assert.equal(daily.mme_status,'not_applicable');
+  assert.equal(combined.mme_full_period_total_mme,''); assert.equal(combined.substance_1_total_reported_quantity,'');
+  assert.equal(combined.substance_1_name,"'=FORMULA()"); assert.equal(combined.substance_1_use_days,'1');
+});
 
 test('user example: 5 mg oxycodone, one weekday tablet and two weekend tablets', () => {
   const s = session();
@@ -145,15 +217,100 @@ test('two strengths of one ingredient remain separate records and sum correctly'
   assert.equal(calculateMme(s).window.totalMme, 22.5);
 });
 
-test('methadone uses fixed 2022 factor for pain; OUD and unknown indication require review', () => {
+test('methadone uses the same fixed factor for pain and OUD; other and unknown indications require review', () => {
   const s = fill(session({ recallDays: 1, medications: [medication({ genericName: 'methadone', strength: 10 })] }), use(5));
   assert.equal(calculateMme(s).window.totalMme, 235);
-  for (const indication of ['oud', 'unknown', 'other']) {
+  s.medications[0].indication = 'oud';
+  assert.equal(calculateMme(s).window.totalMme, 235);
+  for (const indication of ['unknown', 'other']) {
     s.medications[0].indication = indication;
     assert.equal(calculateMme(s).medicationRows[0].reason, 'methadone_indication_requires_review');
     assert.equal(calculateMme(s).window.totalMme, null);
   }
   set(s, 0, noUse()); assert.equal(calculateMme(s).window.totalMme, 0);
+});
+
+test('liquid methadone includes OUD in MME and retains raw responses and indication in exports', () => {
+  const s = session({recallDays:1, medications:[medication({genericName:'methadone',name:'Synthetic methadone liquid',formulation:'liquid',strength:2,strengthUnit:'mg/mL',quantityUnit:'mL',indication:'pain'})]});
+  set(s,0,use(5));
+  const pain = calculateMme(s);
+  assert.equal(pain.medicationRows[0].doseBasis,10);
+  assert.equal(pain.daily[0].mme,47);
+  s.medications[0].indication = 'oud';
+  const oud = calculateMme(s);
+  assert.equal(oud.medicationRows[0].doseBasis,10);
+  assert.equal(oud.daily[0].mme,47);
+  const [exported] = parseCsv(medicationCsv(s));
+  assert.equal(exported.indication,'oud'); assert.equal(exported.reported_quantity,'5');
+  assert.equal(exported.quantity_unit,'mL'); assert.equal(exported.mme,'47');
+  for (const indication of ['unknown','other']) {
+    s.medications[0].indication = indication;
+    const r = calculateMme(s).medicationRows[0];
+    assert.equal(r.mme,null); assert.equal(r.reason,'methadone_indication_requires_review');
+    assert.equal(r.quantity,5); assert.equal(r.effectiveStrength,2);
+    const [row] = parseCsv(medicationCsv(s));
+    assert.equal(row.reported_quantity,'5'); assert.equal(row.quantity_unit,'mL');
+    assert.equal(row.response_status,'use'); assert.equal(row.mme,'');
+  }
+});
+
+test('OUD methadone direct mg is converted once and missing quantities or strengths remain incomplete', () => {
+  const s = session({recallDays:1, medications:[medication({genericName:'methadone',indication:'oud',strength:null,strengthUnit:'mg',quantityUnit:'mg'})]});
+  set(s,0,use(60));
+  assert.equal(calculateMme(s).window.totalMme,282);
+  set(s,0,use(null));
+  assert.equal(calculateMme(s).medicationRows[0].reason,'quantity_unknown');
+  assert.equal(calculateMme(s).window.totalMme,null);
+  s.medications[0] = medication({genericName:'methadone',indication:'oud',strength:null});
+  set(s,0,use(1));
+  assert.equal(calculateMme(s).medicationRows[0].reason,'strength_unknown');
+  set(s,0,use(1,{strengthOverride:10}));
+  assert.equal(calculateMme(s).window.totalMme,47);
+});
+
+test('OUD methadone reaches daily, monthly and combined exports with dose changes and other opioids', () => {
+  const s = session({assessmentDate:'2026-10-03',recallDays:4,medications:[
+    medication({id:'methadone',genericName:'methadone',indication:'oud',formulation:'liquid',strength:2,strengthUnit:'mg/mL',quantityUnit:'mL'}), medication(),
+  ]});
+  fill(s,noUse());
+  set(s,0,use(5),'methadone'); set(s,1,use(5,{strengthOverride:4}),'methadone'); set(s,3,use(10),'methadone');
+  for (let day=0;day<4;day++) set(s,day,use(1),'oxy-5');
+  const before = JSON.stringify(s);
+  const result = calculateMme(s);
+  assert.deepEqual(result.daily.map(d=>d.mme),[54.5,101.5,7.5,101.5]);
+  assert.equal(result.window.totalMme,265); assert.equal(result.window.averageAllDays,66.25);
+  assert.equal(result.window.maximumDailyMme,101.5);
+  assert.deepEqual(result.months.map(m=>[m.totalMme,m.averageAllDays]),[[156,78],[109,54.5]]);
+  const daily = parseCsv(combinedDailyCsv(s));
+  assert.equal(daily[1].medication_1_indication,'oud'); assert.equal(daily[1].medication_1_mme,'94');
+  assert.equal(daily[1].medication_1_effective_strength,'4'); assert.equal(daily[1].daily_mme,'101.5');
+  const [summary] = parseCsv(combinedSummaryCsv(s));
+  assert.equal(summary.mme_full_period_total_mme,'265'); assert.equal(summary.month_2_full_period_total_mme,'109');
+  for (const fn of [medicationCsv,dailyMmeCsv,mmeSummaryCsv,combinedDailyCsv,combinedSummaryCsv]) {
+    assert.ok(parseCsv(fn(s)).every(r=>r.policy_id==='tlfb-mme-policy-2'));
+  }
+  assert.equal(JSON.stringify(s),before);
+});
+
+test('policy-1 sessions upgrade with a notice and preserve every reported field through save/reopen', () => {
+  const s = fill(session({recallDays:1,medications:[medication({genericName:'methadone',indication:'oud',strength:10})]}),use(5));
+  s.reference.policyId = 'tlfb-mme-policy-1';
+  const original = JSON.stringify(s);
+  const loaded = readResearchSession(original);
+  assert.equal(loaded.notices.length,1); assert.match(loaded.notices[0],/totals may change/);
+  assert.equal(loaded.session.reference.policyId,'tlfb-mme-policy-2');
+  assert.deepEqual({...loaded.session,reference:s.reference},s);
+  assert.equal(calculateMme(loaded.session).window.totalMme,235);
+  assert.equal(JSON.stringify(s),original);
+  const reopened = readResearchSession(writeResearchSession(loaded.session));
+  assert.deepEqual(reopened.session,loaded.session); assert.deepEqual(reopened.notices,[]);
+});
+
+test('legacy policy import rejects altered references and malformed data before recalculating', () => {
+  for (const change of [s=>s.reference.factors.methadone=12,s=>s.reference.retrieved='2026-01-01',s=>s.reference.extra=true,s=>s.version=3,s=>s.medications[0].strength=-1]) {
+    const s = session(); s.reference.policyId='tlfb-mme-policy-1'; change(s);
+    assert.throws(()=>readResearchSession(JSON.stringify(s)));
+  }
 });
 
 test('fentanyl patch uses concurrent rate, not patch replacement count or mg/day', () => {
@@ -187,6 +344,57 @@ test('unknown BUP quantity suppresses quantity total without affecting supported
   set(s, 0, use(null));
   const b = calculateMme(s).buprenorphine[0];
   assert.equal(b.useDays, 1); assert.equal(b.unknownQuantityDays, 1); assert.equal(b.totalReportedQuantity, null);
+});
+
+test('one 300 mg buprenorphine injection is counted once in a month and never enters MME', () => {
+  const s = fill(session({recallDays:30,medications:[medication({id:'sublocade',name:'Sublocade',genericName:'buprenorphine',route:'injection',formulation:'other',strength:300,strengthUnit:'mg/unit',quantityUnit:'units',indication:'oud'})]}));
+  set(s,5,use(1),'sublocade');
+  const result=calculateMme(s); const b=result.buprenorphine[0];
+  assert.equal(b.totalReportedQuantity,1); assert.equal(b.totalReportedDoseMg,300);
+  assert.equal(b.useDays,1); assert.equal(b.noUseDays,29); assert.equal(b.unknownDoseDays,0);
+  assert.equal(result.window.totalMme,null); assert.equal(result.window.status,'not_applicable');
+  const day=parseCsv(medicationCsv(s))[5];
+  assert.equal(day.dose_basis,'300'); assert.equal(day.dose_basis_unit,'mg'); assert.equal(day.mme,'');
+  const [combined]=parseCsv(combinedSummaryCsv(s));
+  assert.equal(combined.buprenorphine_1_total_reported_dose_mg,'300');
+  assert.equal(combined.buprenorphine_1_dose_recording,'administered_on_recorded_dates');
+  assert.equal(combined.buprenorphine_1_route,'injection');
+  const [exported]=parseCsv(buprenorphineCsv(s)); assert.equal(exported.total_reported_dose_mg,'300');
+  assert.deepEqual(readResearchSession(writeResearchSession(s)).session,s);
+});
+
+test('unknown injection doses stay unknown; direct mg and date-specific doses are preserved', () => {
+  const s = session({recallDays:3,medications:[medication({genericName:'buprenorphine',route:'injection',strength:null,strengthUnit:'mg/unit',quantityUnit:'units'})]});
+  set(s,0,use(1)); set(s,1,use(1,{strengthOverride:100}));
+  let b=calculateMme(s).buprenorphine[0];
+  assert.equal(b.unknownDoseDays,1); assert.equal(b.totalReportedDoseMg,null); assert.equal(b.missingDays,1);
+  set(s,0,use(1,{strengthOverride:300}));
+  b=calculateMme(s).buprenorphine[0]; assert.equal(b.totalReportedDoseMg,400); assert.equal(b.missingDays,1);
+  s.medications[0]=medication({genericName:'buprenorphine',route:'injection',strength:null,strengthUnit:'mg',quantityUnit:'mg'});
+  set(s,0,use(300)); set(s,1,noUse());
+  assert.equal(calculateMme(s).buprenorphine[0].totalReportedDoseMg,300);
+  set(s,0,use(null)); assert.equal(calculateMme(s).buprenorphine[0].totalReportedDoseMg,null);
+  assert.deepEqual(readResearchSession(writeResearchSession(s)).session,s);
+});
+
+test('pump daily delivery is recorded in mg while buprenorphine and other pump drugs stay outside MME', () => {
+  for (const genericName of ['buprenorphine','morphine']) {
+    const s=session({recallDays:2,medications:[medication({genericName,route:'pump',formulation:'other',strength:null,strengthUnit:'mg',quantityUnit:'mg'})]});
+    set(s,0,use(2)); set(s,1,use(3));
+    let r=calculateMme(s);
+    assert.deepEqual(r.medicationRows.map(d=>d.doseBasis),[2,3]);
+    assert.ok(r.medicationRows.every(d=>d.mme===null));
+    if(genericName==='buprenorphine') {
+      assert.equal(r.buprenorphine[0].totalReportedDoseMg,5);
+      assert.equal(r.buprenorphine[0].doseRecording,'delivered_on_recorded_dates');
+    }
+    s.medications[0]={...s.medications[0],formulation:'liquid',strength:2,strengthUnit:'mg/mL',quantityUnit:'mL'};
+    r=calculateMme(s); assert.deepEqual(r.medicationRows.map(d=>d.doseBasis),[4,6]);
+    const rows=parseCsv(combinedDailyCsv(s)); assert.equal(rows[0].medication_1_dose_basis,'4'); assert.equal(rows[0].medication_1_mme,'');
+    set(s,0,use(null));
+    assert.equal(calculateMme(s).medicationRows[0].doseBasis,null);
+    assert.deepEqual(readResearchSession(writeResearchSession(s)).session,s);
+  }
 });
 
 test('pumps, injections, nonpatch fentanyl, and unlisted drugs are explicitly excluded', () => {
@@ -257,7 +465,7 @@ test('medication export contains reported values, source and unknown quantity wi
   assert.equal(rows[1].response_status, 'use'); assert.equal(rows[1].reported_quantity, '');
   assert.equal(rows[1].mme, ''); assert.equal(rows[1].calculation_status, 'needs_review');
   assert.equal(rows[0].reference_id, 'cdc-2022-table-1');
-  assert.equal(rows[0].policy_id, 'tlfb-mme-policy-1');
+  assert.equal(rows[0].policy_id, 'tlfb-mme-policy-2');
 });
 
 test('all CSV writers neutralize spreadsheet expressions and JSON preserves original text', () => {
@@ -351,4 +559,13 @@ test('month and day aggregates reconcile for 90 synthetic complete days', () => 
   assert.equal(r.window.averageAllDays, total / 90);
   assert.equal(r.window.maximumDailyMme, Math.max(...r.daily.map(d => d.mme)));
   assert.equal(parseCsv(medicationCsv(s)).length, 90);
+});
+
+test('summary schema 3 includes medication contributions and flags incomplete OUD totals', () => {
+  const s=session({recallDays:2,medications:[medication({genericName:'methadone',indication:'oud'})],medicationResponses:{'2026-09-27|oxy-5':use(2)}});
+  const [r]=parseCsv(combinedSummaryCsv(s)); assert.equal(r.export_schema,'tlfb-combined-summary-3');
+  assert.equal(r.medication_1_recorded_mme_subtotal,'47'); assert.equal(r.medication_1_full_window_mme,'');
+  assert.equal(r.medication_1_missing_days,'1'); assert.equal(r.medication_1_minimum_known_use_dose,'10');
+  assert.equal(r.oud_methadone_status,'incomplete'); assert.equal(r.oud_methadone_full_window_mme,'');
+  assert.equal(r.oud_methadone_recorded_mme_subtotal,'47');
 });
