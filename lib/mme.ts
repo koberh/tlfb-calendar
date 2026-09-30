@@ -113,11 +113,13 @@ function calculateMedication(m: Medication, response: MedicationResponse | undef
     // Preserve a reported dose for separate BUP/excluded-route reporting, without MME.
     const unitCompatible = m.quantityUnit === 'mg' ||
       (m.strengthUnit === 'mg/unit' && ['tablets', 'capsules', 'units'].includes(m.quantityUnit)) ||
-      (m.strengthUnit === 'mg/mL' && m.quantityUnit === 'mL');
+      (m.strengthUnit === 'mg/mL' && m.quantityUnit === 'mL') ||
+      (m.strengthUnit === 'mcg/hr' && m.quantityUnit === 'patches');
     const doseBasis = !unitCompatible ? null : response.status === 'no_use' ? 0 :
       response.quantity === null ? null : m.quantityUnit === 'mg' ? response.quantity :
       effectiveStrength === null ? null : product(response.quantity, effectiveStrength);
-    return { ...result, doseBasis, doseBasisUnit: unitCompatible ? (m.route === 'injection' ? 'mg' : 'mg/day') : null };
+    const doseBasisUnit = !unitCompatible ? null : m.strengthUnit === 'mcg/hr' ? 'mcg/hr' : m.route === 'injection' ? 'mg' : 'mg/day';
+    return { ...result, doseBasis, doseBasisUnit };
   }
   if (response.status === 'no_use') return { ...result, status: 'no_use', mme: 0 };
   const review = (reason: string): MedicationResult => ({ ...result, status: 'needs_review', reason });
@@ -223,7 +225,7 @@ function summarizeSeparate(m: Medication, rows: MedicationResult[]) {
     totalReportedQuantity: total,
     meanQuantityPerAnsweredDay: total !== null && answered.length ? total / answered.length : null,
     unknownDoseDays,
-    totalReportedDoseMg: unknownDoseDays ? null : sum(doses),
+    totalReportedDoseMg: unknownDoseDays || m.strengthUnit === 'mcg/hr' ? null : sum(doses),
   };
 }
 

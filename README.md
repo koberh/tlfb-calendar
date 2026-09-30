@@ -20,8 +20,8 @@ approval; do not bypass your institution's installation policy.
 
 This is a testable research prototype, not yet an institution-approved production
 release. Use synthetic data until study methods, storage policy, and deployment
-have been reviewed. The older hosted prototype is separate from this desktop
-build; it has not been redeployed.
+have been reviewed. This repository contains only the offline desktop app; the
+earlier hosted web prototype was retired and its code removed for data-safety reasons.
 
 ## Features
 
@@ -150,10 +150,9 @@ save sessions, close the app, install a reviewed new version, then reopen sessio
 Regenerating the checked-in icon uses `python desktop/make-icon.py` and Pillow;
 ordinary builds do not require Python.
 
-The original `npm run dev` / `npm run build` remain the browser development path.
-The desktop uses `vite.desktop.config.ts`; it does not import Sites/Cloudflare,
-the hosted layout, authentication helpers, or server entry points. Packaging uses
-an explicit file allowlist. Only synthetic fixtures belong in this repository.
+Use `npm run desktop` to build and open the app locally during development.
+There is no web or server build. Packaging uses an explicit file allowlist.
+Only synthetic fixtures belong in this repository.
 
 ## Code map
 

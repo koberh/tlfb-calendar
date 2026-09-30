@@ -59,7 +59,9 @@ export function revisedSetup(old: ResearchSession | null, draft: ResearchSession
   if (old) {
     const medIds = new Set(next.medications.filter(m => {
       const previous = old.medications.find(x => x.id === m.id);
-      return previous && JSON.stringify({...previous, name: '', indication: ''}) === JSON.stringify({...m, name: '', indication: ''});
+      // A strength that was blank at setup may be filled in later; it completes, not reinterprets, the recorded days.
+      const strength = previous?.strength === null ? m.strength : previous?.strength;
+      return previous && JSON.stringify({...previous, name: '', indication: '', strength}) === JSON.stringify({...m, name: '', indication: ''});
     }).map(m => m.id));
     const subIds = new Set(next.substances.filter(s => {
       const previous = old.substances.find(x => x.id === s.id);

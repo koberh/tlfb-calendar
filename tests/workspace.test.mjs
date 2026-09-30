@@ -131,3 +131,24 @@ test('medication contributions retain missingness, dose changes and a nonduplica
   s.medicationResponses['2026-09-27|oxy-5']=noUse(); assert.equal(oudMethadoneSummary(s).total,117.5);
   const missing=medicationSummaries(session())[0]; assert.equal(missing.recordedQuantity,null); assert.equal(missing.recordedMme,null);
 });
+
+test('filling in a blank setup strength keeps recorded days; changing a known strength still clears them', () => {
+  const before = session({medications: [medication({strength: null})]});
+  for (const d of ['2026-09-21','2026-09-22','2026-09-23']) before.medicationResponses[`${d}|oxy-5`] = use(2);
+  const filled = structuredClone(before); filled.medications[0].strength = 5;
+  const kept = revisedSetup(before, filled);
+  assert.equal(kept.removed, 0);
+  assert.equal(calculateMme(kept.session).daily.find(d => d.date === '2026-09-21').mme, 15);
+  const changed = structuredClone(kept.session); changed.medications[0].strength = 10;
+  assert.equal(revisedSetup(kept.session, changed).removed, 3);
+});
+
+test('buprenorphine patch dose is reported in mcg/hr, never as mg or MME', () => {
+  const butrans = medication({id: 'but', name: 'Butrans', genericName: 'buprenorphine', route: 'transdermal', formulation: 'patch', strength: 10, strengthUnit: 'mcg/hr', quantityUnit: 'patches'});
+  const s = session({medications: [butrans], medicationResponses: {'2026-09-21|but': use(1, {patchHours: 24}), '2026-09-22|but': use(2)}});
+  const r = calculateMme(s);
+  const rows = r.medicationRows.filter(x => x.responseStatus === 'use');
+  assert.deepEqual(rows.map(x => [x.doseBasis, x.doseBasisUnit, x.mme]), [[10, 'mcg/hr', null], [20, 'mcg/hr', null]]);
+  assert.equal(r.buprenorphine[0].totalReportedDoseMg, null);
+  assert.match(calculationPreview(butrans, {status: 'use', quantity: '1', strength: '', hours: '24'}).text, /1 patches × 10 mcg\/hr = 10 mcg\/hr\. Buprenorphine recorded separately/);
+});

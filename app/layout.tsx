@@ -1,4 +1,0 @@
-import {headers} from 'next/headers';
-import './globals.css';
-export async function generateMetadata(){const h=await headers();const host=h.get('host')||'tlfb-calendar.milky-owl-8056.chatgpt.site';const origin=`${host.startsWith('localhost')?'http':'https'}://${host}`;return {title:'TLFB Calendar | Research workspace',description:'Daily recall, explicit missingness, and structured research exports.',openGraph:{title:'TLFB Calendar',description:'Every day tells part of the story.',images:[{url:`${origin}/og.png`,width:1536,height:1024,alt:'TLFB Calendar: Every day tells part of the story.'}]},twitter:{card:'summary_large_image',title:'TLFB Calendar',description:'Daily recall. Clear data.',images:[`${origin}/og.png`]}};}
-export default function RootLayout({children}:Readonly<{children:React.ReactNode}>){return <html lang="en"><body>{children}</body></html>}

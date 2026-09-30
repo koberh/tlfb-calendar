@@ -305,6 +305,15 @@ try {
     await page.getByLabel('Confirmed hours of concurrent wear').fill('24'); await page.getByRole('button',{name:'Save day',exact:true}).click();
     await page.getByRole('button',{name:'Summary & exports'}).click(); await expect(page.getByTestId('total-mme')).toHaveText('60');
   });
+  await ok('newly reported patch use starts at 24 hours but saved blanks are never filled in',async()=>{
+    const s=session({medications:[medication({genericName:'fentanyl',name:'Fentanyl',route:'transdermal',formulation:'patch',strength:25,strengthUnit:'mcg/hr',quantityUnit:'patches'})],recallDays:1});
+    await openFixture(s); await page.locator('[data-date="2026-09-27"]').click();
+    await page.getByLabel('Response for Fentanyl').selectOption('use');
+    await expect(page.getByLabel('Confirmed hours of concurrent wear')).toHaveValue('24');
+    await page.getByLabel('Quantity (patches)').fill('1'); await page.getByRole('button',{name:'Save day',exact:true}).click();
+    await page.getByRole('button',{name:'Summary & exports'}).click(); await expect(page.getByTestId('total-mme')).toHaveText('60');
+    await page.getByRole('button',{name:'Calendar',exact:true}).click();
+  });
   await ok('BUP and non-opioid use never display as confirmed no use',async()=>{
     await openFixture(session({recallDays:1,medications:[medication({genericName:'buprenorphine',name:'Buprenorphine'})],medicationResponses:{'2026-09-27|oxy-5':use(null)}}));
     await expect(page.locator('[data-date="2026-09-27"]')).toContainText('Use reported');

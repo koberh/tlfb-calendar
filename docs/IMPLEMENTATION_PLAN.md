@@ -69,6 +69,9 @@ records the exact evidence and avoids treating these outstanding gates as comple
 
 ## Current prototype audit
 
+> Historical audit. As of 0.1.5 the hosted web prototype code (vinext, Sites, Cloudflare,
+> authentication helper, server entry) has been removed; only the desktop build remains.
+
 - Version 1 stores numeric substance responses in React memory and downloads
   JSON/CSV. It has no medication model, appointment field or MME calculations.
 - The project currently builds with vinext, Sites and Cloudflare tooling, plus
