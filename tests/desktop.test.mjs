@@ -10,7 +10,7 @@ test('desktop permits only packaged assets; rejects remote URLs and file paths',
   const root = path.resolve('desktop-dist');
   assert.equal(policy.allowedRequest('tlfb://app/index.html',root),true);
   assert.equal(policy.allowedRequest('tlfb://app/assets/main.js',root),true);
-  for (const url of ['https://example.com','http://127.0.0.1/','file:///C:/Users/kober/test.json','tlfb://evil/index.html','tlfb://app/session.json','tlfb://app/%2e%2e%2fsecret.js','tlfb://app/assets/..%5c..%5csecret.js','tlfb://app/index.html?secret=data']) assert.equal(policy.allowedRequest(url,root),false,url);
+  for (const url of ['https://example.com','http://127.0.0.1/','file:///C:/Users/example/test.json','tlfb://evil/index.html','tlfb://app/session.json','tlfb://app/%2e%2e%2fsecret.js','tlfb://app/assets/..%5c..%5csecret.js','tlfb://app/index.html?secret=data']) assert.equal(policy.allowedRequest(url,root),false,url);
 });
 test('file bridge bounds payloads and refuses path-bearing names', () => {
   assert.equal(policy.validateSave({kind:'session',name:'example.json',text:'{}'}),'.json');

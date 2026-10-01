@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software in research, please cite it as below."
+type: software
+title: "TLFB Calendar: an offline Timeline Followback app with research MME calculation"
+version: 0.1.6
+date-released: 2026-10-01
+license: MIT
+authors:
+  - family-names: Hanson
+    given-names: Kobe
+repository-code: "https://github.com/koberh/tlfb-calendar"
+keywords:
+  - timeline followback
+  - TLFB
+  - morphine milligram equivalents
+  - MME
+  - opioids
+  - substance use
+  - research software

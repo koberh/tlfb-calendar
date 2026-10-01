@@ -1,27 +1,57 @@
 # TLFB Calendar
 
-An interviewer-facing Timeline Followback workspace by Kobe Hanson, with an offline
-Windows desktop edition. Record daily substance use, medication quantities and
-event notes; review completeness; export research data.
+**An offline desktop app for Timeline Followback (TLFB) interviews that tracks daily
+opioid medication use and calculates morphine milligram equivalents (MME) for research.**
+Interviewers walk a participant through a calendar of recent days, record substance use
+and opioid doses, and export clean, analysis-ready CSVs. Missing days are never counted as zero.
 
-## Use the Windows app
+![TLFB Calendar showing a 28-day synthetic interview with daily MME](docs/images/calendar.png)
 
-Install `TLFB-Calendar-0.1.4-Windows-x64-Setup.exe` from the local `release` folder.
-Open **TLFB Calendar** from its desktop or Start Menu icon. Python, Node.js, a
-terminal, an account, and internet access are not needed after installation.
-The installer is currently unsigned. Institution-managed computers may require IT
-approval; do not bypass your institution's installation policy.
+> **Research use only.** MME values are research estimates. They are not prescribing,
+> opioid-rotation or OUD dosing guidance.
+
+## Who it's for
+
+Research teams running TLFB interviews in pain, opioid-use or substance-use studies who need
+daily opioid exposure in MME, alongside alcohol, cannabis, nicotine or any other substance.
+
+- **Two conversion tables:** CDC 2022 (default) or the NIH HEAL Initiative research table, chosen per interview.
+- **Honest missingness:** unanswered, unknown amount and confirmed zero are kept distinct everywhere.
+- **Shows its work:** every dose shows its calculation as you type, and every export row carries the strength, factor and reason.
+- **Handles hard cases:** combination products, liquids, fentanyl and buprenorphine patches, Sublocade injections, pain pumps, methadone for pain or OUD.
+- **Offline by design:** no internet connection, account, telemetry or cloud storage. Files are saved only where you choose.
+
+## Download and install (Windows)
+
+1. Download `TLFB-Calendar-…-Windows-x64-Setup.exe` from the [latest release](../../releases/latest).
+2. Run it. Windows may show **"Windows protected your PC"** because the installer is not
+   code-signed yet. Click **More info**, then **Run anyway**. On institution-managed computers,
+   ask IT before installing, and don't bypass your institution's policy.
+3. Open **TLFB Calendar** from the Start menu or desktop. Nothing else needs to be installed.
+
+Windows 10/11 (64-bit). There is no macOS version yet.
+
+New to the app? Start with the [staff quick start](docs/STAFF_GUIDE.md) and try
+**More options → Try synthetic demo**. Use synthetic data until your study team has
+reviewed the calculation methods and approved where session files are stored.
+
+## Documentation
 
 - [Staff quick start](docs/STAFF_GUIDE.md)
+- [Research calculation specification](docs/RESEARCH_SPEC.md): factors, exceptions and conventions
 - [Offline design and verification](docs/OFFLINE_REVIEW.md)
-- [Research calculation specification](docs/RESEARCH_SPEC.md)
-- [Ordered project plan](docs/IMPLEMENTATION_PLAN.md)
-- [Current status and remaining release gates](docs/PROGRESS.md)
+- [Project plan](docs/IMPLEMENTATION_PLAN.md) and [status](docs/PROGRESS.md)
 
-This is a testable research prototype, not yet an institution-approved production
-release. Use synthetic data until study methods, storage policy, and deployment
-have been reviewed. This repository contains only the offline desktop app; the
-earlier hosted web prototype was retired and its code removed for data-safety reasons.
+## Citing
+
+If you use TLFB Calendar in research, please cite it. GitHub's **Cite this repository**
+button (from [CITATION.cff](CITATION.cff)) provides APA and BibTeX formats. Please also cite the
+TLFB method (Sobell & Sobell, 1992) and the MME conversion table you used.
+
+## Status
+
+A tested research prototype (80 automated tests, 28 desktop acceptance checks), not yet used
+with participants or approved by an institution. Created by Kobe Hanson. MIT license.
 
 ## Features
 

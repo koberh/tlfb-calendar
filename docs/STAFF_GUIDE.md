@@ -206,4 +206,4 @@ changes, cancel and save first if you need to retain the current interview.
 
 Before first real-data use, complete a synthetic interview and have your study/IT
 team review calculations, storage and installation. Do not send participant session
-files, screenshots or notes to ChatGPT for troubleshooting.
+files, screenshots or notes to AI tools or chatbots for troubleshooting.

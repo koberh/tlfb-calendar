@@ -159,7 +159,7 @@ No hosted deployment or GitHub publication has been performed in this phase.
   This is installation evidence on this machine, not a clean-machine test.
 - Installer: `release/TLFB-Calendar-0.1.0-Windows-x64-Setup.exe` (unsigned).
   SHA-256: `ED374AAEFE00A72E90E02A2E481E4CD98966ABF72392FB0D8C5400A80694E51E`.
-- Installed executable: `C:\Users\kober\AppData\Local\Programs\TLFB Calendar\TLFB Calendar.exe`.
+- Installed executable: `%LOCALAPPDATA%\Programs\TLFB Calendar\TLFB Calendar.exe` (per-user install).
 - The archive file list was inspected: local shell/preload/policy, bundled renderer,
   icon, package metadata and license only; no data/test/hosting files.
 
@@ -171,6 +171,6 @@ No clean-machine or institutional approval is claimed. Installer signing is not 
 configured. Have the study review calculation policy, exceptions and PHI storage.
 
 Use STAFF_GUIDE.md for team onboarding and OFFLINE_REVIEW.md for evidence and limits.
-Do not send participant data to ChatGPT during further development.
+Do not send participant data to AI tools or chatbots during further development.
 
 The model-by-model plan remains in IMPLEMENTATION_PLAN.md; REDCap stays downstream.
