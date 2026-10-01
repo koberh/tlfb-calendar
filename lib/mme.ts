@@ -1,5 +1,6 @@
 import { datesFor, keyFor } from './tlfb.ts';
-import { MME_REFERENCE } from './mme-reference.ts';
+import { MME_REFERENCE, usesHeal } from './mme-reference.ts';
+import type { ReferenceSnapshot } from './mme-reference.ts';
 import { validateMedication, validateMedicationResponse, validateResearchSession } from './research-session.ts';
 import type { Medication, MedicationResponse, ResearchSession } from './research-session.ts';
 
@@ -17,7 +18,9 @@ export type MedicationResult = Eligibility & {
   strengthOverridden: boolean;
   patchHours: number | null;
   doseBasis: number | null;
-  doseBasisUnit: 'mg/day' | 'mg' | 'mcg/hr' | null;
+  doseBasisUnit: 'mg/day' | 'mg' | 'mcg/day' | 'mcg/hr' | null;
+  /** Reference MME kept outside the totals (OUD buprenorphine under NIH HEAL). */
+  separateMme: number | null;
   status: 'calculated' | 'no_use' | 'unanswered' | 'needs_review' | 'excluded' | 'buprenorphine';
   mme: number | null;
 };
@@ -58,22 +61,36 @@ export type MmeSummary = {
   maximumDailyMme: number | null;
 };
 
-export function medicationEligibility(m: Medication): Eligibility {
-  if (['buprenorphine', 'buprenorphine/naloxone'].includes(m.genericName)) {
-    return { scope: 'buprenorphine', factor: null, reason: 'buprenorphine_separate' };
+export const isBuprenorphine = (m: Medication) => ['buprenorphine', 'buprenorphine/naloxone'].includes(m.genericName);
+
+/** Buprenorphine factor in a reference, by route and unit; null when the reference has none. */
+function buprenorphineFactor(m: Medication, reference: ReferenceSnapshot): number | null {
+  const key = m.route === 'sublingual' && m.strengthUnit !== 'mcg/unit' ? 'buprenorphine_sublingual'
+    : m.route === 'buccal' && m.strengthUnit === 'mcg/unit' ? 'buprenorphine_buccal'
+    : m.route === 'transdermal' ? 'buprenorphine_transdermal' : null;
+  return key && Object.hasOwn(reference.factors, key) ? reference.factors[key] : null;
+}
+
+export function medicationEligibility(m: Medication, reference: ReferenceSnapshot = MME_REFERENCE): Eligibility {
+  if (isBuprenorphine(m)) {
+    // CDC has no buprenorphine factor. Under NIH HEAL, pain buprenorphine enters MME and
+    // OUD buprenorphine stays separate with its own MME subtotal.
+    const factor = buprenorphineFactor(m, reference);
+    if (factor === null) return { scope: 'buprenorphine', factor: null, reason: 'buprenorphine_separate' };
+    if (m.indication === 'oud') return { scope: 'buprenorphine', factor, reason: 'buprenorphine_oud_separate' };
+    return { scope: 'included', factor, reason: null };
   }
   const excluded = (reason: string): Eligibility => ({ scope: 'excluded', factor: null, reason });
   if (['injection', 'pump'].includes(m.route)) return excluded('route_excluded');
   if (m.genericName === 'fentanyl') {
     if (m.route !== 'transdermal' || m.formulation !== 'patch') return excluded('fentanyl_nonpatch_excluded');
-    return { scope: 'included', factor: MME_REFERENCE.factors.fentanyl_transdermal, reason: null };
+    return { scope: 'included', factor: reference.factors.fentanyl_transdermal, reason: null };
   }
   if (m.route !== 'oral') return excluded('unsupported_route');
-  if (!Object.hasOwn(MME_REFERENCE.factors, m.genericName) || m.genericName === 'fentanyl_transdermal') {
+  if (!Object.hasOwn(reference.factors, m.genericName) || m.genericName.includes('_')) {
     return excluded('no_factor_in_reference');
   }
-  const factor = MME_REFERENCE.factors[m.genericName as keyof typeof MME_REFERENCE.factors];
-  return { scope: 'included', factor, reason: null };
+  return { scope: 'included', factor: reference.factors[m.genericName], reason: null };
 }
 
 function finite(value: number): number {
@@ -91,8 +108,8 @@ function sum(values: number[]): number | null {
   return values.length ? values.reduce((total, value) => finite(total + value), 0) : null;
 }
 
-function calculateMedication(m: Medication, response: MedicationResponse | undefined, date: string): MedicationResult {
-  const eligibility = medicationEligibility(m);
+function calculateMedication(m: Medication, response: MedicationResponse | undefined, date: string, reference: ReferenceSnapshot): MedicationResult {
+  const eligibility = medicationEligibility(m, reference);
   const effectiveStrength = response?.status === 'use' ? response.strengthOverride ?? m.strength : m.strength;
   const result: MedicationResult = {
     ...eligibility,
@@ -105,6 +122,7 @@ function calculateMedication(m: Medication, response: MedicationResponse | undef
     patchHours: response?.status === 'use' ? response.patchHours ?? null : null,
     doseBasis: null,
     doseBasisUnit: null,
+    separateMme: null,
     status: eligibility.scope === 'included' ? 'unanswered' : eligibility.scope,
     mme: null,
   };
@@ -114,20 +132,25 @@ function calculateMedication(m: Medication, response: MedicationResponse | undef
     const unitCompatible = m.quantityUnit === 'mg' ||
       (m.strengthUnit === 'mg/unit' && ['tablets', 'capsules', 'units'].includes(m.quantityUnit)) ||
       (m.strengthUnit === 'mg/mL' && m.quantityUnit === 'mL') ||
-      (m.strengthUnit === 'mcg/hr' && m.quantityUnit === 'patches');
+      (m.strengthUnit === 'mcg/hr' && m.quantityUnit === 'patches') ||
+      (m.strengthUnit === 'mcg/unit' && m.quantityUnit === 'units');
     const doseBasis = !unitCompatible ? null : response.status === 'no_use' ? 0 :
       response.quantity === null ? null : m.quantityUnit === 'mg' ? response.quantity :
       effectiveStrength === null ? null : product(response.quantity, effectiveStrength);
-    const doseBasisUnit = !unitCompatible ? null : m.strengthUnit === 'mcg/hr' ? 'mcg/hr' : m.route === 'injection' ? 'mg' : 'mg/day';
-    return { ...result, doseBasis, doseBasisUnit };
+    const doseBasisUnit = !unitCompatible ? null : m.strengthUnit === 'mcg/hr' ? 'mcg/hr' : m.strengthUnit === 'mcg/unit' ? 'mcg/day' : m.route === 'injection' ? 'mg' : 'mg/day';
+    const patchUnconfirmed = m.route === 'transdermal' && response.status === 'use' && response.patchHours !== 24;
+    const separateMme = eligibility.factor === null || doseBasis === null || patchUnconfirmed ? null
+      : doseBasis === 0 ? 0 : product(doseBasis, eligibility.factor);
+    return { ...result, doseBasis, doseBasisUnit, separateMme };
   }
   if (response.status === 'no_use') return { ...result, status: 'no_use', mme: 0 };
   const review = (reason: string): MedicationResult => ({ ...result, status: 'needs_review', reason });
   if (m.genericName === 'methadone' && !['pain', 'oud'].includes(m.indication)) return review('methadone_indication_requires_review');
+  if (isBuprenorphine(m) && m.indication !== 'pain') return review('buprenorphine_indication_requires_review');
   if (response.quantity === null) return review('quantity_unknown');
   let basis: number;
-  let unit: 'mg/day' | 'mcg/hr';
-  if (m.genericName === 'fentanyl') {
+  let unit: 'mg/day' | 'mcg/day' | 'mcg/hr';
+  if (m.route === 'transdermal') {
     if (response.patchHours !== 24) return review('patch_full_day_not_confirmed');
     if (effectiveStrength === null) return review('strength_unknown');
     basis = product(response.quantity, effectiveStrength);
@@ -139,16 +162,16 @@ function calculateMedication(m: Medication, response: MedicationResponse | undef
     if (m.strengthUnit === 'unknown' || m.formulation === 'other') return review('dose_unit_requires_review');
     if (effectiveStrength === null) return review('strength_unknown');
     basis = product(response.quantity, effectiveStrength);
-    unit = 'mg/day';
+    unit = m.strengthUnit === 'mcg/unit' ? 'mcg/day' : 'mg/day';
   }
   return { ...result, status: 'calculated', doseBasis: basis, doseBasisUnit: unit, mme: product(basis, eligibility.factor!) };
 }
 
 /** The editor preview uses the same validated calculation as saved research results. */
-export function previewMedication(m: Medication, response: MedicationResponse | undefined): MedicationResult {
+export function previewMedication(m: Medication, response: MedicationResponse | undefined, reference: ReferenceSnapshot = MME_REFERENCE): MedicationResult {
   validateMedication(m);
   if (response) validateMedicationResponse(response, m);
-  return calculateMedication(m, response, 'preview');
+  return calculateMedication(m, response, 'preview', reference);
 }
 
 function calculateDay(date: string, rows: MedicationResult[]): DailyMme {
@@ -225,7 +248,20 @@ function summarizeSeparate(m: Medication, rows: MedicationResult[]) {
     totalReportedQuantity: total,
     meanQuantityPerAnsweredDay: total !== null && answered.length ? total / answered.length : null,
     unknownDoseDays,
-    totalReportedDoseMg: unknownDoseDays || m.strengthUnit === 'mcg/hr' ? null : sum(doses),
+    totalReportedDoseMg: unknownDoseDays || ['mcg/hr', 'mcg/unit'].includes(m.strengthUnit) ? null : sum(doses),
+    ...separateMmeSummary(responses),
+  };
+}
+
+/** Reference MME recorded outside the totals; null fields when the reference has no factor. */
+export function separateMmeSummary(rows: MedicationResult[]) {
+  const factor = rows[0]?.scope === 'buprenorphine' ? rows[0].factor : null;
+  const known = rows.flatMap(r => r.separateMme === null ? [] : [r.separateMme]);
+  const subtotal = factor === null ? null : sum(known) ?? 0;
+  return {
+    separateMmeFactor: factor,
+    separateMmeRecordedSubtotal: subtotal,
+    separateMmeFullWindow: factor !== null && known.length === rows.length ? subtotal : null,
   };
 }
 
@@ -235,21 +271,23 @@ export function calculateMme(session: ResearchSession) {
   const dates = datesFor(session.assessmentDate, session.recallDays);
   const medicationRows: MedicationResult[] = [];
   const daily = dates.map(date => {
-    const rows = session.medications.map(m => calculateMedication(m, session.medicationResponses[keyFor(date, m.id)], date));
+    const rows = session.medications.map(m => calculateMedication(m, session.medicationResponses[keyFor(date, m.id)], date, session.reference));
     medicationRows.push(...rows);
     return calculateDay(date, rows);
   });
   const months = [...new Set(dates.map(date => date.slice(0, 7)))].map(month =>
     summarizeDays(daily.filter(day => day.date.startsWith(month)), month));
   return {
-    scope: `Included opioids under ${session.reference.policyId}; includes oral methadone for pain or OUD at 4.7 MME/mg for research; excludes buprenorphine and unsupported medications/routes.`,
+    scope: usesHeal(session.reference)
+      ? `Included opioids under ${session.reference.policyId}; includes oral methadone for pain or OUD at 4.7 MME/mg and buprenorphine for pain using NIH HEAL factors, for research; OUD buprenorphine is reported separately with its own MME subtotal; excludes unsupported medications/routes.`
+      : `Included opioids under ${session.reference.policyId}; includes oral methadone for pain or OUD at 4.7 MME/mg for research; excludes buprenorphine and unsupported medications/routes.`,
     referenceId: session.reference.id,
     policyId: session.reference.policyId,
     medicationRows,
     daily,
     window: summarizeDays(daily, 'recall_window'),
     months,
-    excluded: session.medications.filter(m => medicationEligibility(m).scope === 'excluded').map(m => ({ medicationId: m.id, name: m.name, reason: medicationEligibility(m).reason })),
-    buprenorphine: session.medications.filter(m => medicationEligibility(m).scope === 'buprenorphine').map(m => summarizeSeparate(m, medicationRows)),
+    excluded: session.medications.filter(m => medicationEligibility(m, session.reference).scope === 'excluded').map(m => ({ medicationId: m.id, name: m.name, reason: medicationEligibility(m, session.reference).reason })),
+    buprenorphine: session.medications.filter(m => medicationEligibility(m, session.reference).scope === 'buprenorphine').map(m => summarizeSeparate(m, medicationRows)),
   };
 }

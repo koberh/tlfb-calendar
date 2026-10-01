@@ -49,3 +49,4 @@ details>summary{cursor:pointer;color:var(--green);font-weight:600}details>summar
   .print-summary th small,.print-summary td small{display:block;font-size:7pt}.print-summary thead{display:table-header-group}.print-summary tr{break-inside:avoid}
   .print-summary .hint,.print-reference{font-size:8pt}.printed-note p{white-space:pre-wrap}.print-reference{border-top:1px solid #aaa;padding-top:10pt;margin-top:20pt!important}
 }
+.reference-grid{margin-top:20px;grid-template-columns:1fr 2fr;align-items:center}.reference-grid .hint{margin:0}@media(max-width:850px){.reference-grid{grid-template-columns:1fr}}

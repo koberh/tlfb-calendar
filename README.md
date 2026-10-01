@@ -33,7 +33,8 @@ earlier hosted web prototype was retired and its code removed for data-safety re
 - Weekday/weekend/manual date selection, overwrite confirmation and event notes.
 - Distinct confirmed zero, reported use, partial, unanswered and outside-window days.
 - Total, maximum and daily-average MME; calendar-month summaries within the recall interval.
-- Buprenorphine quantities reported separately; injections, pumps and unsupported routes excluded from MME.
+- Choice of MME conversion table per interview: CDC 2022 (default) or the NIH HEAL Initiative research table.
+- Buprenorphine reported separately under CDC; under NIH HEAL, buprenorphine for pain enters MME and OUD buprenorphine gets its own separate MME subtotal. Injections, pumps and unsupported routes excluded from MME.
 - Native local JSON session save/open, combined daily/summary CSVs and six detailed CSV exports.
 - Live dose/MME previews, last-save time and filename, optional local autosave.
 - Undo the last applied day, bulk-entry/clearing or settings change.
@@ -61,8 +62,10 @@ REDCap instrument. The original workbook and participant data are not distribute
 
 ## Research definitions
 
-The fixed reference is the [CDC 2022 conversion table](https://www.cdc.gov/mmwr/volumes/71/rr/rr7103a1.htm#T1_down),
-stored with a separate application policy version. MME is research output, not a
+Each interview stores one frozen reference, chosen in setup: the
+[CDC 2022 conversion table](https://www.cdc.gov/mmwr/volumes/71/rr/rr7103a1.htm#T1_down) (default) or the
+[NIH HEAL Initiative MME mapping table](https://pmc.ncbi.nlm.nih.gov/articles/PMC12266977/),
+each with its own application policy version. Changing the table keeps every answer and recalculates. MME is research output, not a
 prescribing or opioid-rotation recommendation. See the specification for factors
 and exceptions.
 
@@ -74,8 +77,9 @@ observed values/subtotals. No included opioid means MME is not applicable.
 
 Calendar status includes every medication and substance, independently of MME
 eligibility. Monthly results use only recall dates within each calendar month.
-Values are not extrapolated to 30 days. Buprenorphine is never assigned an MME
-factor; oral methadone for pain or OUD uses 4.7; fentanyl requires confirmed 24-hour
+Values are not extrapolated to 30 days. Under CDC, buprenorphine is never assigned an MME
+factor; under NIH HEAL, pain buprenorphine is included and OUD buprenorphine is a separate
+subtotal outside the totals. Oral methadone for pain or OUD uses 4.7 in both tables; fentanyl requires confirmed 24-hour
 concurrent patch wear. Different units are never added together.
 
 Version 0.1.2 includes OUD methadone under research policy 2, accepts mg per injection

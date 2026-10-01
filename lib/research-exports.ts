@@ -8,6 +8,7 @@ import type { ResearchSession } from './research-session.ts';
 const metadataHeaders = ['participant_id', 'assessor', 'appointment_code', 'appointment_label', 'assessment_date'];
 const metadata = (s: ResearchSession) => [s.participantId, s.assessor, s.appointment.code, s.appointment.label, s.assessmentDate];
 const sourceHeaders = ['reference_id', 'policy_id', 'reference_source', 'reference_published', 'reference_retrieved'];
+const bupStatus = (b: {separateMmeFactor: number | null}) => b.separateMmeFactor === null ? 'excluded_buprenorphine' : 'separate_oud_buprenorphine_mme';
 const source = (s: ResearchSession) => [s.reference.id, s.reference.policyId, s.reference.sourceUrl, s.reference.published, s.reference.retrieved];
 
 /** Wide research export: exactly one row per recall date, with MME counted once. */
@@ -16,7 +17,7 @@ export function combinedDailyCsv(session: ResearchSession): string {
   const medRows = new Map(result.medicationRows.map(r => [keyFor(r.date, r.medicationId), r]));
   const medicationFields = ['id', 'name', 'generic_name', 'route', 'formulation', 'indication', 'response_status',
     'reported_quantity', 'quantity_unit', 'configured_strength', 'effective_strength', 'strength_unit', 'strength_overridden',
-    'patch_hours', 'dose_basis', 'dose_basis_unit', 'scope', 'calculation_status', 'reason', 'factor', 'mme'];
+    'patch_hours', 'dose_basis', 'dose_basis_unit', 'scope', 'calculation_status', 'reason', 'factor', 'mme', 'separate_mme'];
   const substanceFields = ['id', 'name', 'measurement', 'unit', 'response_status', 'value'];
   return csv([
     ['export_schema', ...metadataHeaders, 'recall_start', 'recall_end', 'recall_days', 'date', 'mme_scope', 'mme_status',
@@ -33,7 +34,7 @@ export function combinedDailyCsv(session: ResearchSession): string {
         const r = medRows.get(keyFor(d.date, m.id))!;
         return [m.id, m.name, m.genericName, m.route, m.formulation, m.indication, r.responseStatus, r.quantity, m.quantityUnit,
           m.strength, r.effectiveStrength, m.strengthUnit, r.strengthOverridden, r.patchHours, r.doseBasis, r.doseBasisUnit,
-          r.scope, r.status, r.reason, r.factor, r.mme];
+          r.scope, r.status, r.reason, r.factor, r.mme, r.separateMme];
       }),
       ...session.substances.flatMap(s => {
         const v = session.responses[keyFor(d.date, s.id)];
@@ -64,7 +65,8 @@ export function combinedSummaryCsv(session: ResearchSession): string {
   const subFields = ['id', 'name', 'measurement', 'unit', 'answered_days', 'missing_days', 'no_use_days', 'use_days',
     'percent_use_of_answered_days', 'total_reported_quantity', 'mean_per_answered_day'];
   const bupFields = ['id', 'name', 'quantity_unit', 'answered_days', 'missing_days', 'use_days', 'no_use_days',
-    'unknown_quantity_days', 'total_reported_quantity', 'mean_quantity_per_answered_day', 'mme_status', 'route', 'dose_recording', 'unknown_dose_days', 'total_reported_dose_mg'];
+    'unknown_quantity_days', 'total_reported_quantity', 'mean_quantity_per_answered_day', 'mme_status', 'route', 'dose_recording', 'unknown_dose_days', 'total_reported_dose_mg',
+    'separate_mme_factor', 'separate_mme_recorded_subtotal', 'separate_mme_full_window'];
   return csv([
     ['export_schema', ...metadataHeaders, 'recall_days', 'mme_scope',
       ...periods.flatMap((_p, i) => combinedPeriodFields.map(([, label]) => `${i === 0 ? 'mme' : `month_${i}`}_${label}`)),
@@ -72,7 +74,7 @@ export function combinedSummaryCsv(session: ResearchSession): string {
       ...result.buprenorphine.flatMap((_b, i) => bupFields.map(f => `buprenorphine_${i + 1}_${f}`)),
       ...medications.flatMap((_m,i) => medFields.map(f => `medication_${i+1}_${f}`)),
       'oud_methadone_status','oud_methadone_recorded_mme_subtotal','oud_methadone_full_window_mme', ...sourceHeaders],
-    ['tlfb-combined-summary-3', ...metadata(session), session.recallDays, result.scope,
+    ['tlfb-combined-summary-4', ...metadata(session), session.recallDays, result.scope,
       ...periods.flatMap(p => combinedPeriodFields.map(([key]) => p[key])),
       ...session.substances.flatMap(s => {
         const q = summary({...session, version: 1}, s);
@@ -80,7 +82,8 @@ export function combinedSummaryCsv(session: ResearchSession): string {
           s.kind === 'quantity' && q.answered ? q.total : null, q.mean];
       }),
       ...result.buprenorphine.flatMap(b => [b.medicationId, b.name, b.quantityUnit, b.answeredDays, b.missingDays,
-        b.useDays, b.noUseDays, b.unknownQuantityDays, b.totalReportedQuantity, b.meanQuantityPerAnsweredDay, 'excluded_buprenorphine', b.route, b.doseRecording, b.unknownDoseDays, b.totalReportedDoseMg]),
+        b.useDays, b.noUseDays, b.unknownQuantityDays, b.totalReportedQuantity, b.meanQuantityPerAnsweredDay, bupStatus(b), b.route, b.doseRecording, b.unknownDoseDays, b.totalReportedDoseMg,
+        b.separateMmeFactor, b.separateMmeRecordedSubtotal, b.separateMmeFullWindow]),
       ...medications.flatMap(r => [r.medication.id,r.medication.name,r.medication.route,r.medication.indication,r.scope,r.useDays,r.noUseDays,r.missingDays,r.unknownQuantityDays,r.recordedQuantity,r.medication.quantityUnit,r.minimumDose,r.maximumDose,r.doseUnit,r.calculableDays,r.recordedMme,r.totalMme]),
       oud ? oud.complete ? 'complete' : 'incomplete' : 'not_applicable', oud?.subtotal ?? null, oud?.total ?? null,
       ...source(session)],
@@ -93,12 +96,12 @@ export function medicationCsv(session: ResearchSession): string {
   return csv([
     [...metadataHeaders, 'date', 'medication_id', 'name', 'generic_name', 'route', 'formulation', 'indication',
       'response_status', 'reported_quantity', 'quantity_unit', 'configured_strength', 'effective_strength', 'strength_overridden',
-      'strength_unit', 'patch_hours', 'dose_basis', 'dose_basis_unit', 'scope', 'calculation_status', 'reason', 'factor', 'mme', 'event_note', ...sourceHeaders],
+      'strength_unit', 'patch_hours', 'dose_basis', 'dose_basis_unit', 'scope', 'calculation_status', 'reason', 'factor', 'mme', 'separate_mme', 'event_note', ...sourceHeaders],
     ...result.medicationRows.map(r => {
       const m = meds.get(r.medicationId)!;
       return [...metadata(session), r.date, m.id, m.name, m.genericName, m.route, m.formulation, m.indication,
         r.responseStatus, r.quantity, m.quantityUnit, m.strength, r.effectiveStrength, r.strengthOverridden, m.strengthUnit,
-        r.patchHours, r.doseBasis, r.doseBasisUnit, r.scope, r.status, r.reason, r.factor, r.mme, session.notes[r.date] ?? '', ...source(session)];
+        r.patchHours, r.doseBasis, r.doseBasisUnit, r.scope, r.status, r.reason, r.factor, r.mme, r.separateMme, session.notes[r.date] ?? '', ...source(session)];
     }),
   ]);
 }
@@ -136,10 +139,12 @@ export function buprenorphineCsv(session: ResearchSession): string {
   const result = calculateMme(session);
   return csv([
     [...metadataHeaders, 'medication_id', 'name', 'quantity_unit', 'answered_days', 'missing_days', 'use_days', 'no_use_days',
-      'unknown_quantity_days', 'total_reported_quantity', 'mean_quantity_per_answered_day', 'mme_status', 'route', 'dose_recording', 'unknown_dose_days', 'total_reported_dose_mg'],
+      'unknown_quantity_days', 'total_reported_quantity', 'mean_quantity_per_answered_day', 'mme_status', 'route', 'dose_recording', 'unknown_dose_days', 'total_reported_dose_mg',
+      'separate_mme_factor', 'separate_mme_recorded_subtotal', 'separate_mme_full_window', ...sourceHeaders],
     ...result.buprenorphine.map(b => [...metadata(session), b.medicationId, b.name, b.quantityUnit, b.answeredDays,
       b.missingDays, b.useDays, b.noUseDays, b.unknownQuantityDays, b.totalReportedQuantity,
-      b.meanQuantityPerAnsweredDay, 'excluded_buprenorphine', b.route, b.doseRecording, b.unknownDoseDays, b.totalReportedDoseMg]),
+      b.meanQuantityPerAnsweredDay, bupStatus(b), b.route, b.doseRecording, b.unknownDoseDays, b.totalReportedDoseMg,
+      b.separateMmeFactor, b.separateMmeRecordedSubtotal, b.separateMmeFullWindow, ...source(session)]),
   ]);
 }
 

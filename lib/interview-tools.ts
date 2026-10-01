@@ -1,11 +1,11 @@
 import {datesFor, keyFor} from './tlfb.ts';
-import {calculateMme} from './mme.ts';
+import {calculateMme, separateMmeSummary} from './mme.ts';
 import {createResearchSession, validateResearchSession} from './research-session.ts';
 import type {ResearchSession} from './research-session.ts';
 
 export function followupDraft(source: ResearchSession, assessmentDate: string): ResearchSession {
   validateResearchSession(source);
-  return {...createResearchSession(assessmentDate), participantId: source.participantId,
+  return {...createResearchSession(assessmentDate), participantId: source.participantId, reference: structuredClone(source.reference),
     recallDays: source.recallDays, appointment: {code: 'unspecified', label: ''},
     medications: structuredClone(source.medications), substances: structuredClone(source.substances)};
 }
@@ -43,7 +43,8 @@ export function medicationSummaries(session: ResearchSession, result = calculate
       minimumDose: doses.length ? Math.min(...doses.map(r => r.doseBasis!)) : null,
       maximumDose: doses.length ? Math.max(...doses.map(r => r.doseBasis!)) : null, doseUnit,
       calculableDays: knownMme.length, recordedMme,
-      totalMme: scope === 'included' && knownMme.length === rows.length ? recordedMme : null};
+      totalMme: scope === 'included' && knownMme.length === rows.length ? recordedMme : null,
+      ...separateMmeSummary(rows)};
   });
 }
 

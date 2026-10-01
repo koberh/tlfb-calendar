@@ -1,15 +1,18 @@
 import type {Medication, ResearchSession} from '../lib/research-session';
 import {blankResponse, measurement, newMedication, reasonLabel} from '../lib/workspace';
 import type {ResponseDraft} from '../lib/workspace';
-import {medicationEligibility} from '../lib/mme';
+import {isBuprenorphine, medicationEligibility} from '../lib/mme';
+import {REFERENCES, referenceSnapshot, usesHeal} from '../lib/mme-reference';
+import type {ReferenceSnapshot} from '../lib/mme-reference';
 import {calculationPreview} from '../lib/calculation-preview';
 
 export const visits = [['baseline','Baseline'],['month_1','1-month follow-up'],['month_3','3-month follow-up'],['month_6','6-month follow-up'],['custom','Custom'],['unspecified','Unspecified']] as const;
-const drugs = ['codeine','hydrocodone','hydromorphone','methadone','morphine','oxycodone','oxymorphone','tapentadol','tramadol','fentanyl','buprenorphine','buprenorphine/naloxone'];
+const drugs = ['codeine','hydrocodone','hydromorphone','methadone','morphine','oxycodone','oxymorphone','tapentadol','tramadol','fentanyl','buprenorphine','buprenorphine/naloxone','butorphanol','dihydrocodeine','levorphanol','meperidine','opium','pentazocine'];
+const tableNames: Record<string, string> = {'cdc-2022-table-1': 'CDC 2022', 'nih-heal-2025-table-1': 'NIH HEAL'};
 
-export function MedicationEntry({medication: m, value, onChange, applyLabel = 'Save day'}: {medication: Medication; value: ResponseDraft; onChange: (d: ResponseDraft) => void; applyLabel?: string}) {
-  const scope = medicationEligibility(m);
-  const preview = calculationPreview(m, value);
+export function MedicationEntry({medication: m, reference, value, onChange, applyLabel = 'Save day'}: {medication: Medication; reference: ReferenceSnapshot; value: ResponseDraft; onChange: (d: ResponseDraft) => void; applyLabel?: string}) {
+  const scope = medicationEligibility(m, reference);
+  const preview = calculationPreview(m, value, reference);
   return <fieldset className="daily-med"><legend>{m.name}</legend>
     <p className="hint">{m.strength === null ? (m.quantityUnit === 'mg' ? 'Direct mg entry' : 'Strength unknown') : `${m.strength} ${m.route === 'injection' && m.strengthUnit === 'mg/unit' ? 'mg/injection' : m.strengthUnit}`} · {m.route} · enter {m.route === 'injection' && m.quantityUnit === 'units' ? 'injection count' : m.quantityUnit}</p>
     {m.route === 'injection' && <p className="hint">Record the dose only on its administration date. No dose administered means no injection that day, not absence of medication effect. Do not repeat a monthly dose across every day.</p>}
@@ -41,6 +44,10 @@ export function SetupFields({draft, onChange}: {draft: ResearchSession; onChange
       <label>Appointment<select value={draft.appointment.code} onChange={e => {const v = visits.find(v => v[0] === e.target.value)!; onChange({...draft, appointment: {code: v[0], label: v[0] === 'custom' ? '' : v[1]}});}}>{visits.map(v => <option key={v[0]} value={v[0]}>{v[1]}</option>)}</select></label>
       <label>Appointment name<input required={draft.appointment.code !== 'unspecified'} maxLength={120} value={draft.appointment.label} onChange={e => onChange({...draft, appointment: {...draft.appointment, label: e.target.value}})}/></label>
     </div>
+    <div className="setup-grid reference-grid">
+      <label>MME conversion table<select value={draft.reference.id} onChange={e => onChange({...draft, reference: referenceSnapshot(e.target.value)})}>{REFERENCES.map(r => <option key={r.id} value={r.id}>{tableNames[r.id] ?? r.title}</option>)}</select></label>
+    <p className="hint">{usesHeal(draft.reference) ? 'NIH HEAL: adds factors for more opioids (tapentadol 0.3) and counts buprenorphine for pain in MME. OUD buprenorphine stays out of the totals, with its own MME subtotal.' : 'CDC 2022: the CDC pain-management table. Buprenorphine is reported separately, without MME.'} Changing the table keeps every recorded answer and recalculates.</p>
+    </div>
     <div className="substance-header"><h3>Opioid medications</h3><p>Record the opioid ingredient and reported strength. For combination products, use only the opioid strength. Unknown strengths may stay blank.</p></div>
     {draft.medications.map((m, i) => <fieldset className="medication-card" key={m.id}><legend>Medication {i + 1}</legend><div className="medication-fields">
       <label>Generic ingredient<select value={drugs.includes(m.genericName) ? m.genericName : 'other'} onChange={e => {
@@ -52,15 +59,15 @@ export function SetupFields({draft, onChange}: {draft: ResearchSession; onChange
       <label>Display name<input required maxLength={160} value={m.name} onChange={e => updateMed(m.id, {...m, name: e.target.value})}/></label>
       <label>Route<select value={m.route} onChange={e => {
         const route = e.target.value as Medication['route'];
-        updateMed(m.id, measurement({...m, route}, route === 'transdermal' ? 'patch' : route === 'oral' ? 'tablet' : route === 'sublingual' || route === 'buccal' ? 'film' : route === 'injection' ? 'injection' : route === 'pump' ? 'mg' : 'other'));
+        updateMed(m.id, measurement({...m, route}, route === 'transdermal' ? 'patch' : route === 'oral' ? 'tablet' : route === 'buccal' ? 'film-mcg' : route === 'sublingual' ? 'film' : route === 'injection' ? 'injection' : route === 'pump' ? 'mg' : 'other'));
       }}>{['oral','transdermal','sublingual','buccal','injection','pump','other'].map(r => <option key={r}>{r}</option>)}</select></label>
-      <label>Form / entry method<select value={m.quantityUnit === 'mg' ? 'mg' : m.route === 'injection' && m.formulation === 'other' && m.strengthUnit === 'mg/unit' && m.quantityUnit === 'units' ? 'injection' : m.formulation} onChange={e => updateMed(m.id, measurement(m, e.target.value))}>
-        {(m.route === 'transdermal' ? ['patch'] : m.route === 'oral' ? ['tablet','capsule','liquid','mg','other'] : m.route === 'injection' ? ['injection','mg','liquid','tablet','capsule','film','patch','other'] : ['tablet','capsule','liquid','film','patch','mg','other']).map(f => <option value={f} key={f}>{f === 'injection' ? 'Dose per injection' : f === 'mg' ? (m.route === 'injection' ? 'Total mg administered on date' : m.route === 'pump' ? 'Total mg delivered per day' : 'Total mg per day') : f}</option>)}
+      <label>Form / entry method<select value={m.quantityUnit === 'mg' ? 'mg' : m.route === 'injection' && m.formulation === 'other' && m.strengthUnit === 'mg/unit' && m.quantityUnit === 'units' ? 'injection' : m.strengthUnit === 'mcg/unit' ? 'film-mcg' : m.formulation} onChange={e => updateMed(m.id, measurement(m, e.target.value))}>
+        {(m.route === 'transdermal' ? ['patch'] : m.route === 'oral' ? ['tablet','capsule','liquid','mg','other'] : m.route === 'injection' ? ['injection','mg','liquid','tablet','capsule','film','patch','other'] : m.route === 'buccal' || m.route === 'sublingual' ? ['film','film-mcg','tablet','capsule','liquid','mg','other'] : ['tablet','capsule','liquid','film','patch','mg','other']).map(f => <option value={f} key={f}>{f === 'injection' ? 'Dose per injection' : f === 'film-mcg' ? 'film (mcg strength)' : f === 'film' ? 'film (mg strength)' : f === 'mg' ? (m.route === 'injection' ? 'Total mg administered on date' : m.route === 'pump' ? 'Total mg delivered per day' : 'Total mg per day') : f}</option>)}
       </select></label>
       {!['mg','unknown'].includes(m.strengthUnit) && <label>{m.route === 'injection' && m.strengthUnit === 'mg/unit' ? 'Dose per injection (mg)' : `Strength (${m.strengthUnit})`}<input type="number" min="0" step="any" value={m.strength ?? ''} placeholder="Unknown" onChange={e => updateMed(m.id, {...m, strength: e.target.value === '' ? null : Number(e.target.value)})}/></label>}
       {m.quantityUnit === 'mg' && <p className="hint">Enter {m.route === 'injection' ? 'the administered dose' : m.route === 'pump' ? 'the amount delivered' : 'the daily dose'} in mg on the calendar.</p>}
       <label>Indication<select value={m.indication} onChange={e => updateMed(m.id, {...m, indication: e.target.value as Medication['indication']})}><option value="unknown">Unknown / not recorded</option><option value="pain">Pain</option><option value="oud">Opioid use disorder</option><option value="other">Other</option></select></label>
-    </div><div className="inline-actions"><p className="hint">Daily quantity: {m.quantityUnit}. {reasonLabel(medicationEligibility(m).reason)}{m.genericName === 'methadone' ? ' Oral methadone for pain or OUD: research MME = mg/day × 4.7. Record the actual indication; other or unknown indications need review.' : ''}</p><button type="button" onClick={() => onChange({...draft, medications: draft.medications.filter(x => x.id !== m.id)})}>Remove medication {i + 1}</button></div></fieldset>)}
+    </div><div className="inline-actions"><p className="hint">Daily quantity: {m.quantityUnit}. {reasonLabel(medicationEligibility(m, draft.reference).reason)}{isBuprenorphine(m) && usesHeal(draft.reference) ? ' Under NIH HEAL, record the indication: pain counts toward MME, OUD stays separate, other or unknown needs review.' : ''}{m.genericName === 'methadone' ? ' Oral methadone for pain or OUD: research MME = mg/day × 4.7. Record the actual indication; other or unknown indications need review.' : ''}</p><button type="button" onClick={() => onChange({...draft, medications: draft.medications.filter(x => x.id !== m.id)})}>Remove medication {i + 1}</button></div></fieldset>)}
     <button type="button" disabled={draft.medications.length >= 30} onClick={() => onChange({...draft, medications: [...draft.medications, newMedication(crypto.randomUUID())]})}>+ Add opioid</button>
     <div className="substance-header"><h3>Other substances</h3><p>Use the names, definitions, and units specified by your study.</p></div>
     {draft.substances.map((s, i) => <div className="substance-row" key={s.id}><span className="index">{i + 1}</span>

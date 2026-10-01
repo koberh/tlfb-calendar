@@ -20,6 +20,21 @@ not part of this policy. Buprenorphine has no factor here and is recorded
 separately. MME is an estimate, not a drug-switching or prescribing instruction;
 the CDC table does not establish equivalent overdose risk for all drugs.
 
+### Optional reference: NIH HEAL Initiative MME mapping table
+
+Selectable per interview (reference `nih-heal-2025-table-1`, policy `tlfb-mme-heal-policy-1`;
+source https://pmc.ncbi.nlm.nih.gov/articles/PMC12266977/, Table 1). Oral factors: butorphanol 7,
+codeine 0.15, dihydrocodeine 0.25, hydrocodone 1, hydromorphone 5, levorphanol 11, meperidine 0.1,
+methadone 4.7, morphine 1, opium 1, oxycodone 1.5, oxymorphone 3, pentazocine 0.37, tapentadol 0.3,
+tramadol 0.2 (long-acting forms share these factors); fentanyl patch 2.4 per mcg/hr; buprenorphine
+sublingual 38.8 per mg, buccal film 0.039 per mcg, patch 2.2 per mcg/hr. HEAL's nonpatch fentanyl
+factors (buccal, lozenge, nasal) are not implemented; those entries remain excluded.
+
+Study convention for buprenorphine under HEAL: indication **pain** enters MME; indication **OUD** is
+kept out of all MME totals and reported as a separate per-medication MME subtotal (full-window only
+when every day is answered); other/unknown indications need review. Buprenorphine routes without a
+HEAL factor (injection, pump) remain separate without MME.
+
 Application choices beyond the reference table:
 
 - Oral tablets, capsules, liquid, and explicitly reported oral mg are supported
@@ -36,9 +51,10 @@ Application choices beyond the reference table:
   Reported hours must equal 24. Partial-day/uncertain wear is retained and flagged
   for review; do not prorate or infer wear from replacement schedules.
 - Pumps, injections, nonpatch fentanyl, unknown-strength illicit products, and
-  drugs absent from the reference (including levorphanol and dihydrocodeine) are
+  drugs absent from the chosen reference (under CDC, including levorphanol and dihydrocodeine) are
   retained but excluded with a reason. No guessed factors or brand-name inference.
-- Buprenorphine is separate regardless of formulation; it never enters MME.
+- Under CDC, buprenorphine is separate regardless of formulation; it never enters MME.
+  Under NIH HEAL, see the buprenorphine convention above.
 
 ## Importing earlier policies
 

@@ -93,7 +93,12 @@ not zero; the session can still be saved and other included-opioid MME can calcu
 Fentanyl patches require the rate in mcg/hr, concurrent patch count and documented
 hours of wear. The calculator requires 24-hour concurrent wear; it does not use
 the number of patch changes or prorate a partial day. Unknown/partial wear needs review.
-Buprenorphine is recorded as separate reported quantities and is not converted to MME.
+With the **CDC 2022** table, buprenorphine is recorded as separate reported quantities and is
+not converted to MME. With the **NIH HEAL** table (chosen in setup under **MME conversion table**),
+record the indication: buprenorphine for **pain** counts toward MME (sublingual mg, buccal film in
+mcg, or patch in mcg/hr with 24-hour wear); buprenorphine for **OUD** stays out of the totals and
+shows its own separate MME subtotal; other or unknown indications need review. Sublocade and other
+injections have no HEAL factor and stay separate.
 Pumps, injections and unsupported medication/routes remain excluded from MME.
 
 ## Review results

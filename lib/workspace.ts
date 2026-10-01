@@ -43,6 +43,7 @@ export function measurement(m: Medication, kind: string): Medication {
     liquid: {formulation: 'liquid', strengthUnit: 'mg/mL', quantityUnit: 'mL'},
     patch: {formulation: 'patch', strengthUnit: 'mcg/hr', quantityUnit: 'patches'},
     film: {formulation: 'film', strengthUnit: 'mg/unit', quantityUnit: 'units'},
+    'film-mcg': {formulation: 'film', strengthUnit: 'mcg/unit', quantityUnit: 'units'},
     mg: {formulation: 'other', strengthUnit: 'mg', quantityUnit: 'mg'},
     injection: {formulation: 'other', strengthUnit: 'mg/unit', quantityUnit: 'units'},
     other: {formulation: 'other', strengthUnit: 'unknown', quantityUnit: 'units'},
@@ -96,4 +97,6 @@ export const reasonLabel = (reason: string | null) => ({
   dose_unit_requires_review: 'Dose units require review', route_excluded: 'Pump / injection dose recorded separately; excluded from MME',
   unsupported_route: 'Route excluded', fentanyl_nonpatch_excluded: 'Nonpatch fentanyl excluded',
   no_factor_in_reference: 'No factor in this reference', buprenorphine_separate: 'Buprenorphine reported separately',
+  buprenorphine_oud_separate: 'OUD buprenorphine kept out of MME totals; NIH HEAL MME shown as a separate subtotal',
+  buprenorphine_indication_requires_review: 'Buprenorphine indication requires review',
 }[reason ?? ''] ?? reason ?? '');

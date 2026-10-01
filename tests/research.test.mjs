@@ -561,9 +561,9 @@ test('month and day aggregates reconcile for 90 synthetic complete days', () => 
   assert.equal(parseCsv(medicationCsv(s)).length, 90);
 });
 
-test('summary schema 3 includes medication contributions and flags incomplete OUD totals', () => {
+test('summary schema 4 includes medication contributions and flags incomplete OUD totals', () => {
   const s=session({recallDays:2,medications:[medication({genericName:'methadone',indication:'oud'})],medicationResponses:{'2026-09-27|oxy-5':use(2)}});
-  const [r]=parseCsv(combinedSummaryCsv(s)); assert.equal(r.export_schema,'tlfb-combined-summary-3');
+  const [r]=parseCsv(combinedSummaryCsv(s)); assert.equal(r.export_schema,'tlfb-combined-summary-4');
   assert.equal(r.medication_1_recorded_mme_subtotal,'47'); assert.equal(r.medication_1_full_window_mme,'');
   assert.equal(r.medication_1_missing_days,'1'); assert.equal(r.medication_1_minimum_known_use_dose,'10');
   assert.equal(r.oud_methadone_status,'incomplete'); assert.equal(r.oud_methadone_full_window_mme,'');

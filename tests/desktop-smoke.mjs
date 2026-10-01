@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {session, medication, use} from './research-fixtures.mjs';
+import {referenceSnapshot} from '../lib/mme-reference.ts';
 
 const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const output = path.join(root,'test-results'); await fs.mkdir(output,{recursive:true});
@@ -330,6 +331,26 @@ try {
     await page.screenshot({path:path.join(output,'setup.png'),fullPage:true});
     await page.getByRole('button',{name:'Create interview',exact:true}).click(); await expect(page.getByText('12-month follow-up',{exact:true})).toBeVisible();
   });
+  await ok('NIH HEAL table can be chosen in setup and keeps OUD buprenorphine out of totals',async()=>{
+    await dialogs(); await page.getByRole('button',{name:'New interview',exact:true}).click();
+    await page.getByLabel('Participant code').fill('SYNTHETIC-HEAL');
+    await page.getByLabel('MME conversion table').selectOption('nih-heal-2025-table-1');
+    await expect(page.getByText(/NIH HEAL: adds factors/)).toBeVisible();
+    await page.getByRole('button',{name:'Create interview',exact:true}).click();
+    await page.getByRole('button',{name:'Summary & exports'}).click();
+    await expect(page.getByText('NIH HEAL Initiative MME mapping table (research use)').first()).toBeVisible();
+    await page.getByRole('button',{name:'Calendar',exact:true}).click();
+    const bup=medication({id:'bup',name:'Suboxone',genericName:'buprenorphine/naloxone',route:'sublingual',formulation:'film',strength:8,strengthUnit:'mg/unit',quantityUnit:'units',indication:'oud'});
+    const s=session({recallDays:1,medications:[medication(),bup],reference:referenceSnapshot('nih-heal-2025-table-1'),medicationResponses:{'2026-09-27|oxy-5':use(2)}});
+    await openFixture(s); await page.locator('[data-date="2026-09-27"]').click();
+    await page.getByLabel('Response for Suboxone').selectOption('use'); await page.getByLabel('Quantity (units)').fill('2');
+    await expect(page.getByTestId('calculation-preview').nth(1)).toContainText('620.8 MME');
+    await page.getByRole('button',{name:'Save day',exact:true}).click();
+    await page.getByRole('button',{name:'Summary & exports'}).click();
+    await expect(page.getByTestId('total-mme')).toHaveText('15');
+    await expect(page.getByTestId('bup-separate-mme')).toContainText('620.8');
+    await page.getByRole('button',{name:'Calendar',exact:true}).click();
+  });
   await ok('unsaved-close prompt keeps the window open on cancel',async()=>{
     const count=await app.evaluate(({BrowserWindow,dialog})=>{
       let count=0; dialog.showMessageBoxSync=()=>{count++;return 0;}; BrowserWindow.getAllWindows()[0].close(); return count;
@@ -376,7 +397,7 @@ try {
     const json=files.find(f=>f.endsWith('.json')), input=path.join(parent,folder,json);
     const stored=JSON.parse(await fs.readFile(input,'utf8'));assert.equal(Object.keys(stored.medicationResponses).length,0);
     assert.equal(stored.notes['2026-09-23'],'Synthetic preserved note');
-    assert.match(await fs.readFile(path.join(parent,folder,files.find(f=>f.endsWith('-combined-summary.csv'))),'utf8'),/tlfb-combined-summary-3/);
+    assert.match(await fs.readFile(path.join(parent,folder,files.find(f=>f.endsWith('-combined-summary.csv'))),'utf8'),/tlfb-combined-summary-4/);
     await dialogs({openPath:input});await page.getByRole('button',{name:'Open session',exact:true}).click(); await expect(page.getByRole('status')).toContainText('Session opened');
   });
   await ok('follow-up confirms copied setup and does not carry responses, notes, visit or autosave',async()=>{

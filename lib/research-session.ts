@@ -13,7 +13,7 @@ export type Medication = {
   formulation: 'tablet' | 'capsule' | 'liquid' | 'patch' | 'film' | 'other';
   indication: 'pain' | 'oud' | 'other' | 'unknown';
   strength: number | null;
-  strengthUnit: 'mg/unit' | 'mg/mL' | 'mcg/hr' | 'mg' | 'unknown';
+  strengthUnit: 'mg/unit' | 'mcg/unit' | 'mg/mL' | 'mcg/hr' | 'mg' | 'unknown';
   quantityUnit: 'tablets' | 'capsules' | 'mL' | 'mg' | 'patches' | 'units';
 };
 export type MedicationResponse =
@@ -75,7 +75,10 @@ export function validateMedication(value: unknown): asserts value is Medication 
   choice(value.route, ['oral', 'transdermal', 'sublingual', 'buccal', 'injection', 'pump', 'other'], 'route');
   choice(value.formulation, ['tablet', 'capsule', 'liquid', 'patch', 'film', 'other'], 'formulation');
   choice(value.indication, ['pain', 'oud', 'other', 'unknown'], 'indication');
-  choice(value.strengthUnit, ['mg/unit', 'mg/mL', 'mcg/hr', 'mg', 'unknown'], 'strength unit');
+  choice(value.strengthUnit, ['mg/unit', 'mcg/unit', 'mg/mL', 'mcg/hr', 'mg', 'unknown'], 'strength unit');
+  if (value.strengthUnit === 'mcg/unit' && (!['buccal', 'sublingual'].includes(value.route as string) || value.quantityUnit !== 'units')) {
+    throw new Error('Microgram strengths are for buccal or sublingual units.');
+  }
   choice(value.quantityUnit, ['tablets', 'capsules', 'mL', 'mg', 'patches', 'units'], 'quantity unit');
   if (value.strength !== null) positive(value.strength, 'Strength');
   if (value.quantityUnit === 'mg' && (value.strength !== null || value.strengthUnit !== 'mg')) {
