@@ -50,8 +50,17 @@ TLFB method (Sobell & Sobell, 1992) and the MME conversion table you used.
 
 ## Status
 
-A tested research prototype (80 automated tests, 28 desktop acceptance checks), not yet used
-with participants or approved by an institution. Created by Kobe Hanson. MIT license.
+A research prototype with 108 checks: 80 automated tests covering
+calculations and data handling, plus 28 desktop workflow checks.
+
+Testing uses synthetic data on a Windows development computer.
+Testing on a separate clean computer and study-specific validation
+are still pending. The app has not yet been used with participants
+or approved by an institution.
+
+Research use only—not for prescribing or treatment decisions.
+
+Created by Kobe Hanson. MIT license.
 
 ## Features
 
