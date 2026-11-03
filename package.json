@@ -1,6 +1,6 @@
 {
     "name": "tlfb-calendar",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "private": true,
     "main": "desktop/main.cjs",
     "description": "Offline Timeline Followback research calendar",
