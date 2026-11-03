@@ -5,6 +5,7 @@ title: "TLFB Calendar: an offline Timeline Followback app with research MME calc
 version: 0.1.7
 date-released: 2026-11-02
 license: MIT
+doi: 10.5281/zenodo.23901180
 authors:
   - family-names: Hanson
     given-names: Kobe

@@ -1,5 +1,7 @@
 # TLFB Calendar
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23901180.svg)](https://doi.org/10.5281/zenodo.23901180)
+
 **An offline desktop app for Timeline Followback (TLFB) interviews that tracks daily
 opioid medication use and calculates morphine milligram equivalents (MME) for research.**
 Interviewers walk a participant through a calendar of recent days, record substance use
